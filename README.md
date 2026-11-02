@@ -28,7 +28,7 @@ The CLI reads environment variables directly; it does not parse `.env` files its
 
 ## Design
 
-The CLI uses a small keyword router and direct retrieval from two approved sources. Product lookup reads the products CSV and returns the matching row. Policy lookup extracts text from the store-policy PDF with `pdftotext`. The model receives the matching product row or policy text through the OpenAI-compatible Chat Completions API. Customer and order CSVs are excluded.
+The CLI uses a small keyword router and direct retrieval from two approved sources. Product lookup reads the products CSV and returns the matching row. Policy lookup extracts text from the store-policy PDF with `pdftotext`. The model receives the matching product row or policy text through the OpenAI-compatible Chat Completions API. The system prompt requires Brazilian Portuguese, limits answers to supplied evidence, and tells the model to disclose missing information. This keeps generated answers tied to the retrieved source and reduces invented prices or rules. Customer and order CSVs are excluded.
 
 The CLI does not retain conversation history. It uses local templates when the API request fails. These templates cover product lookup, online-return policy, and out-of-scope requests. Other policy questions need the model API to summarize the retrieved policy text.
 
@@ -36,14 +36,20 @@ The CLI does not retain conversation history. It uses local templates when the A
 
 - Product matching is lexical and designed for the supplied case, not a production catalog.
 - Stock is shown from the supplied CSV snapshot. It is not live inventory.
-- Order status is not supported because the project has no requester verification flow.
+- Order status is not supported. The order data is linked to customer contact details, and the CLI has no requester verification flow.
 - Install `pdftotext` to answer policy questions.
+
+## Future improvements
+
+- Add order lookup only after implementing requester verification.
+- Improve product matching to handle more paraphrases and spelling variations.
+- Add automated checks for source-backed answers and out-of-scope handling.
 
 ## Development assistance
 
 OpenAI Codex was used to inspect the challenge materials, implement and review the prototype, and maintain the project documentation. Decisions and limitations were checked against the supplied brief and source files.
 
-The required set of three to five saved example conversations has not been added yet.
+Three CLI conversations are saved in [examples/conversations.md](examples/conversations.md). They cover product lookup, a return-policy question, and an out-of-scope question.
 
 The CLI uses the OpenAI-compatible `/chat/completions` endpoint so it can connect to local inference servers.
 
