@@ -32,9 +32,9 @@ The prompt asks the model not to invent facts or disclose personal data, but the
 
 ## Verification
 
-The order path was run with `ORDER_DATA_DIR=examples/fixtures` using `TESTE-100` and `cliente@example.test`. It returned `Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: orders.csv.` An incorrect email returned `Não encontrei um pedido com esses dados. Confira e tente novamente.`, the same message used for an unknown order. The saved conversation is in [`examples/conversations.md`](../examples/conversations.md).
+During the order-status implementation run, `ORDER_DATA_DIR=examples/fixtures` was used with `TESTE-100` and `cliente@example.test`. It returned `Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: orders.csv.` An incorrect email returned `Não encontrei um pedido com esses dados. Confira e tente novamente.`, the same message used for an unknown order. The saved conversation is in [`examples/conversations.md`](../examples/conversations.md).
 
-`sh scripts/check_python.sh` returned `All checks passed! 2 files already formatted`. `git diff --check` returned no output. These checks do not replace an automated behavior test suite; none is configured.
+That implementation run also returned `All checks passed! 2 files already formatted` from `sh scripts/check_python.sh`. The current documentation run checked `git diff --check`; it returned no output. These checks do not replace an automated behavior test suite; none is configured.
 
 ## Known limits
 
