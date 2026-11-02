@@ -14,6 +14,18 @@ python3 tools/agent_cli.py
 
 The model defaults to `lfm3-omni-2b` at `http://100.111.77.36:1234/v1`, using the OpenAI-compatible Chat Completions endpoint. Change `OPENAI_BASE_URL` and `OPENAI_MODEL` to use another server or model. A local server does not need an API key; set `OPENAI_API_KEY` only if your server requires one. The CLI uses local templates when the server is unavailable.
 
+To use the example settings, copy `.env.example` to `.env` and load it in your shell before running the CLI:
+
+```sh
+cp .env.example .env
+set -a
+source .env
+set +a
+python3 tools/agent_cli.py "Quanto custa o Takamine GD20?"
+```
+
+The CLI reads environment variables directly; it does not parse `.env` files itself. Keep real credentials in `.env`, which is ignored by Git.
+
 ## Design
 
 The CLI uses a small keyword router and direct retrieval from two approved sources. Product lookup reads the products CSV and returns the matching row. Policy lookup extracts text from the store-policy PDF with `pdftotext`. The model receives the matching product row or policy text through the OpenAI-compatible Chat Completions API. Customer and order CSVs are excluded.
