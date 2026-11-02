@@ -1,6 +1,6 @@
 # Example conversations
 
-These examples were run with `python3 tools/agent_cli.py` against the configured OpenAI-compatible local model. The out-of-scope question is handled locally by design.
+These examples were run with `python3 tools/agent_cli.py` against the configured OpenAI-compatible local model. The return-policy answer below was edited against the cited manual because the original model reply omitted two policy conditions. The out-of-scope question is handled locally by design.
 
 ## Product price and availability
 
@@ -14,9 +14,7 @@ These examples were run with `python3 tools/agent_cli.py` against the configured
 
 **Customer:** Comprei online há cinco dias e me arrependi. Posso devolver?
 
-**Empório da Música:** Com base na evidência fornecida, a política de trocas e devoluções (seção 4.1) estabelece que o cliente pode solicitar a devolução em até 7 dias corridos após o recebimento do produto, sem necessidade de justificativa. O reembolso será realizado na mesma forma de pagamento original em até 10 dias úteis.
-
-Portanto, sim, é possível devolver o item comprado online há cinco dias.
+**Empório da Música:** Oi! Sim. Como a compra foi feita online há cinco dias, você pode pedir a devolução dentro do prazo de 7 dias corridos após o recebimento, sem justificar. O produto precisa estar sem sinais de uso, na embalagem original e com todos os acessórios e manuais. Em caso de arrependimento, a loja paga o frete de devolução. O reembolso será feito pela forma de pagamento original em até 10 dias úteis.
 
 **Source:** `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf`
 
