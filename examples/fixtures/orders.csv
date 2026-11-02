@@ -1,0 +1,2 @@
+order_id,customer_id,order_date,status,total_brl,payment_method,tracking_code,estimated_delivery,notes
+TESTE-100,fixture-customer,2026-11-01,shipped,100.00,pix,,2026-11-05,

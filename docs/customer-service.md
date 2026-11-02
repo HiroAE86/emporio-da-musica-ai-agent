@@ -23,4 +23,4 @@ Ajudar a equipe da Empório da Música a responder perguntas recorrentes por men
 
 ## Implementação atual
 
-O protótipo está em `tools/agent_cli.py`. Ele roteia perguntas de produto para o CSV de produtos e perguntas sobre regras para o PDF de políticas. Perguntas fora do escopo recebem uma orientação curta. Consultas de pedidos e promoções ainda não são suportadas. Dados de clientes e pedidos não são enviados ao modelo.
+O protótipo está em `tools/agent_cli.py`. Ele consulta o CSV de produtos e o PDF de políticas. Para status de pedido, confere localmente o número do pedido e o e-mail cadastrado, sem enviar esses dados ao modelo. A resposta mostra apenas status e previsão de entrega. Consultas de promoções não são suportadas.

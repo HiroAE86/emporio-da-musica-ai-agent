@@ -14,10 +14,6 @@ Protótipo de agente de atendimento por mensagens para apoiar a equipe da loja f
 - [Exemplos de conversa](conversations.md) — cenários para o conjunto de demonstração.
 - [Requisitos completos](requirements.md) — requisitos e entregáveis extraídos do desafio.
 
-## Busca de conhecimento para agentes
-
-Use [`knowledge-lookup.md`](knowledge-lookup.md) e `python3 tools/project_knowledge.py query "sua pergunta"` para pesquisar docs, CSVs e o manual com referências às fontes.
-
 ## Fontes fornecidas
 
 Os CSVs e o PDF em `Desafio Técnico AI Engineer 2026/data/` são as fontes disponíveis para o agente. Fatos operacionais devem ser respondidos a partir dos CSVs; regras de atendimento devem vir do manual de políticas. Cada guia de domínio registra quais fontes são pertinentes.

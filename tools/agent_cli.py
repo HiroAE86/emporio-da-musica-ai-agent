@@ -15,6 +15,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from order_status import answer_order_status, is_order_request
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
 PRODUCTS = next(DATA.glob("*products.csv"))
@@ -215,6 +217,16 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
         return local_answer(question, evidence)
 
 
+def print_response(question: str, prefix: str = "") -> None:
+    if is_order_request(question):
+        print(f"{prefix}{answer_order_status()}")
+        return
+    evidence = load_evidence(question)
+    print(f"{prefix}{model_answer(question, evidence)}")
+    if evidence:
+        print(f"Fonte: {evidence.source}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -222,12 +234,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.message:
-        question = " ".join(args.message)
         try:
-            evidence = load_evidence(question)
-            print(model_answer(question, evidence))
-            if evidence:
-                print(f"\nFonte: {evidence.source}")
+            print_response(" ".join(args.message))
         except (OSError, subprocess.CalledProcessError, StopIteration) as error:
             parser.error(f"não consegui consultar as fontes: {error}")
         return
@@ -244,10 +252,7 @@ def main() -> None:
         if not question:
             continue
         try:
-            evidence = load_evidence(question)
-            print(f"Loja: {model_answer(question, evidence)}")
-            if evidence:
-                print(f"Fonte: {evidence.source}")
+            print_response(question, "Loja: ")
         except (OSError, subprocess.CalledProcessError, StopIteration) as error:
             print(f"Não consegui consultar as fontes: {error}", file=sys.stderr)
 

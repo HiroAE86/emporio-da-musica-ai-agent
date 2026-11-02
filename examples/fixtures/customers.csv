@@ -1,0 +1,2 @@
+customer_id,name,phone,email,city
+fixture-customer,Cliente Exemplo,,cliente@example.test,Exemplo

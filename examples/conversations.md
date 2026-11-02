@@ -1,6 +1,6 @@
 # Example conversations
 
-These examples were run with `python3 tools/agent_cli.py` against the configured OpenAI-compatible local model. The out-of-scope question is handled locally by design.
+These examples were run with `python3 tools/agent_cli.py` against the configured OpenAI-compatible local model. The order-status example uses fictional data from `examples/fixtures/`. The out-of-scope question is handled locally by design.
 
 ## Product price and availability
 
@@ -22,6 +22,22 @@ These examples were run with `python3 tools/agent_cli.py` against the configured
 * **Forma e prazo do reembolso:** O reembolso será realizado na mesma forma de pagamento original em até 10 dias úteis.
 
 **Source:** `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf`
+
+## Order status
+
+**Customer:** Qual é o status do meu pedido?
+
+**CLI prompt:** Número do pedido
+
+**Customer:** TESTE-100
+
+**CLI prompt:** E-mail cadastrado (hidden input)
+
+**Customer:** `cliente@example.test`
+
+**Empório da Música:** Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: `orders.csv`.
+
+**Source:** `examples/fixtures/orders.csv` and `examples/fixtures/customers.csv` (fictional data)
 
 ## Out-of-scope question
 
