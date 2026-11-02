@@ -31,11 +31,12 @@ The CLI is sufficient because the brief permits it and the focus is on the agent
 
 ## 4. Implementation sequence
 
-1. Reviewed the brief, CSV schemas, and policy PDF.
-2. Implemented `tools/agent_cli.py` with direct product and policy retrieval, an OpenAI-compatible Chat Completions call, and local replies for selected demo paths.
-3. Updated the README and architecture notes with setup and implementation decisions.
-4. Add three to five example conversations and verify their facts against source rows and policy sections.
-5. Commit coherent increments, publish a public GitHub repository, and submit its link by replying to the recruiting email before the stated deadline.
+1. Reviewed the brief, operational CSV schemas, and policy PDF.
+2. Implemented direct product and policy retrieval with a local model call and local fallback replies.
+3. Added a local order-status check using an order ID and registered email, with fictional public fixtures.
+4. Saved four conversations and checked their facts against the product CSV, fixture CSVs, and policy section 4.1.
+5. Recorded the design reasons in `docs/architecture.md` and summarized them in the README.
+6. Committed focused changes. GitHub publication and email submission remain.
 
 ## 5. Acceptance checks
 
