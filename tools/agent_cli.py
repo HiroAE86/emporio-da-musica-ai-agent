@@ -171,6 +171,8 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
     instructions = (
         "Você atende a Empório da Música. Responda em português brasileiro, com tom informal e profissional. "
         "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. O estoque é uma fotografia do CSV, não tempo real. "
+        "Em perguntas sobre arrependimento de compra online, inclua o prazo, as condições do produto, "
+        "quem paga o frete de devolução, a forma e o prazo do reembolso, se constarem na evidência. "
         "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais."
     )
     payload = json.dumps(
@@ -178,7 +180,10 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
             "model": os.getenv("OPENAI_MODEL", "lfm3-omni-2b"),
             "messages": [
                 {"role": "system", "content": instructions},
-                {"role": "user", "content": f"Pergunta do cliente: {question}\n\nEvidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}"},
+                {
+                    "role": "user",
+                    "content": f"Pergunta do cliente: {question}\n\nEvidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}",
+                },
             ],
         }
     ).encode()
@@ -195,7 +200,15 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
         with urlopen(request, timeout=45) as response:
             result = json.loads(response.read())
         return result["choices"][0]["message"]["content"].strip()
-    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError) as error:
+    except (
+        HTTPError,
+        URLError,
+        TimeoutError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+    ) as error:
         print(
             f"API indisponível ({error}); usando resposta local baseada na fonte.", file=sys.stderr
         )
