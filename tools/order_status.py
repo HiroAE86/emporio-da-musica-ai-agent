@@ -35,6 +35,14 @@ def _order_files() -> tuple[Path, Path] | None:
 
 
 GENERIC_MISMATCH = "Não encontrei um pedido com esses dados. Confira e tente novamente."
+STATUS_TRANSLATIONS = {
+    "pending": "pendente",
+    "processing": "em processamento",
+    "shipped": "enviado",
+    "delivered": "entregue",
+    "cancelled": "cancelado",
+    "returned": "devolvido",
+}
 
 
 def lookup_order_status(
@@ -64,7 +72,8 @@ def lookup_order_status(
             or customer.get("phone", "").strip() != phone.strip()
         ):
             return GENERIC_MISMATCH
-        status = order.get("status", "").strip() or "não informado"
+        raw_status = order.get("status", "").strip()
+        status = STATUS_TRANSLATIONS.get(raw_status.casefold(), raw_status) or "não informado"
         delivery = order.get("estimated_delivery", "").strip() or "não informada"
         return f"Status do pedido: {status}. Previsão de entrega: {delivery}. Fonte: {orders_path.name}."
     except (OSError, KeyError, csv.Error):

@@ -6,7 +6,7 @@ PY := $(VENV)/bin/python
 CLI := $(PY) tools/agent_cli.py
 
 -include .env
-export OPENAI_BASE_URL OPENAI_MODEL OPENAI_API_KEY AGENT_TOOLS
+export OPENAI_BASE_URL OPENAI_MODEL OPENAI_API_KEY AGENT_TOOLS AGENT_TOOL_STRATEGY
 
 .PHONY: help setup preflight test lint demo chat ask order policies qa clean
 

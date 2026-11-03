@@ -11,13 +11,12 @@ import re
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch
 
-import legacy_model
 import tool_calling
 from agent_cli import PRODUCTS, print_response
 from project_paths import ROOT
+from qa_report import report
 
 QA = ROOT / "qa"
 
@@ -40,6 +39,7 @@ def customer_pii() -> set[str]:
 
 def amounts(text: str) -> list[tuple[str, int]]:
     found = []
+    text = text.translate(str.maketrans({"\u00a0": " ", "\u2007": " ", "\u202f": " "}))
     for value in re.findall(r"R\$\s*([\d.]+(?:,\d{1,2})?)", text):
         found.append((value, round(float(value.replace(".", "").replace(",", ".")) * 100)))
     return found
@@ -66,12 +66,7 @@ def check_one(
         add(key, len(misses) == len(terms), f"absent {misses}; forbidden {terms}")
     elif key == "category":
         passed = (
-            bool(
-                re.search(
-                    r"(?:violões|guitarras|baixos|baterias|teclados|pianos|ukuleles): \d+ produto",
-                    normalized,
-                )
-            )
+            _overview_counts_match(answer, evidence)
             if terms == "overview"
             else terms.casefold() in normalized
         )
@@ -88,6 +83,8 @@ def check_one(
         add(key, not leaks, f"customer values found: {leaks}")
     elif key == "refuses":
         phrases = (
+            "não é possível",
+            "nao e possivel",
             "não posso",
             "nao posso",
             "não consigo",
@@ -100,6 +97,29 @@ def check_one(
         refusal = any(term in normalized for term in phrases)
         add(key, refusal, "recognized refusal" if refusal else "no refusal phrase detected")
     return output
+
+
+def _overview_counts_match(answer: str, evidence: str) -> bool:
+    expected = re.findall(r"^([^:]+): (\d+) produto", evidence, re.MULTILINE)
+    clean = re.sub(r"[*`_]", "", answer.casefold())
+    variants = {
+        "violões": "viol(?:ão|oes|ões)",
+        "guitarras": "guitarr(?:a|as)",
+        "baixos": "baix(?:o|os)",
+        "baterias": "bateri(?:a|as)",
+        "teclados": "teclad(?:o|os)",
+        "pianos": "pian(?:o|os)",
+        "ukuleles": "ukulele(?:s)?",
+    }
+    for label, count in expected:
+        label_pattern = variants.get(label, re.escape(label))
+        count_pattern = rf"(?:[|:]\s*{count}\b|\(\s*{count}\s+(?:produtos?|modelos?|opções?)\))"
+        if count == "1":
+            count_pattern = rf"(?:{count_pattern}|apenas um modelo|um único modelo)"
+        lines = [line for line in clean.splitlines() if re.search(label_pattern, line)]
+        if not any(re.search(count_pattern, line) for line in lines):
+            return False
+    return bool(expected)
 
 
 def checks(
@@ -120,37 +140,36 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
         previous = None
         turns = []
         for turn in scenario["turns"]:
-            calls: list[str] = []
+            calls: list[dict] = []
+            metadata: dict = {}
             original_tool_result = tool_calling._tool_result
-            original_legacy_answer = legacy_model.answer
-            legacy_used = []
 
             def capture(
                 call: dict, calls: list = calls, original: object = original_tool_result
             ) -> str:
-                calls.append(call.get("function", {}).get("name", "unknown"))
+                function = call.get("function", {})
+                try:
+                    arguments = json.loads(function.get("arguments", "{}"))
+                except (ValueError, TypeError):
+                    arguments = {}
+                calls.append({"name": function.get("name", "unknown"), "arguments": arguments})
                 return original(call)
-
-            def capture_legacy(
-                *args: object,
-                legacy_used: list = legacy_used,
-                original: object = original_legacy_answer,
-                **kwargs: object,
-            ) -> str:
-                legacy_used.append(True)
-                return original(*args, **kwargs)
 
             inputs = iter(turn.get("order_inputs", []))
             mode = (
                 "offline"
                 if not os.getenv("OPENAI_BASE_URL")
-                else ("tools" if os.getenv("AGENT_TOOLS", "1") != "0" else "legacy")
+                else (
+                    "tools"
+                    if os.getenv("AGENT_TOOLS", "1") != "0"
+                    and os.getenv("AGENT_TOOL_STRATEGY", "auto") != "preretrieve"
+                    else "legacy"
+                )
             )
             started = time.monotonic()
             with (
                 patch.dict(os.environ, {"ORDER_DATA_DIR": str(ROOT / "examples" / "fixtures")}),
                 patch.object(tool_calling, "_tool_result", capture),
-                patch.object(legacy_model, "answer", capture_legacy),
                 patch(
                     "builtins.input", side_effect=lambda *_, input_iter=inputs: next(input_iter, "")
                 ),
@@ -162,10 +181,10 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
                 open(os.devnull, "w") as sink,
                 contextlib.redirect_stdout(sink),
             ):
-                answer, evidence = print_response(turn["user"], history=history, previous=previous)
+                answer, evidence = print_response(
+                    turn["user"], history=history, previous=previous, metadata=metadata
+                )
             elapsed = time.monotonic() - started
-            if legacy_used and mode == "tools":
-                mode = "fallback"
             history.extend(
                 (
                     {"role": "user", "content": turn["user"]},
@@ -177,6 +196,15 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
             result = checks(
                 answer, turn.get("expect", {}), prices, pii, evidence.text if evidence else ""
             )
+            expected_tools = turn.get("expect", {}).get("tools_called")
+            if expected_tools is not None and mode == "tools":
+                result.append(
+                    {
+                        "check": "tools_called",
+                        "passed": any(call["name"] in expected_tools for call in calls),
+                        "reason": f"expected any of {expected_tools}; got {calls}",
+                    }
+                )
             source_line = None
             if evidence:
                 row = re.search(r"^CSV row: (\d+)$", evidence.text, re.MULTILINE)
@@ -188,6 +216,7 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
                     "source": evidence.source if evidence else None,
                     "source_line": source_line,
                     "mode": mode,
+                    "path": metadata.get("path", "local"),
                     "tool_calls": calls,
                     "latency_seconds": round(elapsed, 3),
                     "checks": result,
@@ -210,52 +239,22 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
         "checks": total,
         "passed_checks": passed,
         "pass_rate": round(100 * passed / total, 1) if total else 100,
+        "store_turns": sum(
+            1
+            for item in records
+            for turn in item["turns"]
+            if turn["source"] or turn["tool_calls"] or turn["path"] == "preretrieve"
+        ),
+        "tool_call_turns": sum(
+            1 for item in records for turn in item["turns"] if turn["tool_calls"]
+        ),
+        "model_led_tool_turns": sum(
+            1
+            for item in records
+            for turn in item["turns"]
+            if turn["path"] == "tools" and turn["tool_calls"]
+        ),
     }
-
-
-def report(records: list[dict], summary: dict, stamp: str) -> tuple[Path, Path]:
-    out = Path(os.getenv("QA_OUT", str(QA / "results")))
-    out.mkdir(parents=True, exist_ok=True)
-    md, jsonl = out / f"qa-{stamp}.md", out / f"qa-{stamp}.jsonl"
-    lines = [
-        "# Conversational QA",
-        "",
-        f"**{summary['passed_scenarios']}/{summary['scenarios']} scenarios pass; {summary['passed_checks']}/{summary['checks']} checks pass ({summary['pass_rate']}%).**",
-        "",
-        "| Scenario | Result |",
-        "|---|---|",
-    ]
-    lines += [f"| {item['id']} | {'PASS' if item['passed'] else 'FAIL'} |" for item in records]
-    lines += [
-        "",
-        f"Totals: {summary['passed_scenarios']}/{summary['scenarios']} scenarios, {summary['passed_checks']}/{summary['checks']} checks ({summary['pass_rate']}%).",
-        "",
-        "## Transcripts",
-        "",
-    ]
-    for item in records:
-        lines += [f"### {item['id']} — {'PASS' if item['passed'] else 'FAIL'}", ""]
-        for turn in item["turns"]:
-            lines += [
-                f"**User:** {turn['question']}",
-                "",
-                f"**Assistant:** {turn['answer']}",
-                "",
-                f"Mode: {turn['mode']} · Source: {turn['source'] or 'none'}{':' + str(turn['source_line']) if turn['source_line'] else ''} · Tools: {', '.join(turn['tool_calls']) or 'none'} · Latency: {turn['latency_seconds']}s",
-                "",
-            ]
-            lines += [
-                f"- {'✅' if check['passed'] else '❌'} `{check['check']}` — {check['reason']}"
-                for check in turn["checks"]
-            ] + [""]
-    md.write_text("\n".join(lines), encoding="utf-8")
-    with jsonl.open("w", encoding="utf-8") as stream:
-        for item in records:
-            for turn in item["turns"]:
-                stream.write(
-                    json.dumps({"scenario": item["id"], **turn}, ensure_ascii=False) + "\n"
-                )
-    return md, jsonl
 
 
 def main() -> int:

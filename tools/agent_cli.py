@@ -13,9 +13,10 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from catalog import brl, category_evidence
+from catalog import category_evidence
 from intent_router import clearly_out_of_scope
-from offline_answers import Evidence, carry_over, local_answer
+from model_routing import model_answer
+from offline_answers import Evidence, carry_over
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
 from pypdf import PdfReader
@@ -157,70 +158,26 @@ def load_evidence(question: str) -> Evidence | None:
     return None
 
 
-def model_answer(
-    question: str, evidence: Evidence | None, history: list[dict[str, str]] | None = None
-) -> str:
-    if evidence is not None and evidence.kind == "category":
-        return local_answer(question, evidence)
-    base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
-    if not base_url:
-        return local_answer(question, evidence)
-    if os.getenv("AGENT_TOOLS", "1") != "0":
-        from tool_calling import run_tool_agent
-
-        try:
-            answer = run_tool_agent(question, history)
-            if answer:
-                return _check_model_prices(answer, evidence)
-        except (
-            HTTPError,
-            URLError,
-            TimeoutError,
-            ValueError,
-            KeyError,
-            IndexError,
-            TypeError,
-        ) as error:
-            print(
-                f"API com ferramentas indisponível ({error}); tentando caminho legado.",
-                file=sys.stderr,
-            )
-    from legacy_model import answer
-
-    return _check_model_prices(answer(question, evidence, history), evidence)
-
-
-def _check_model_prices(answer_text: str, evidence: Evidence | None) -> str:
-    if evidence is None or evidence.kind != "product":
-        return answer_text
-    amounts = re.findall(r"R\$\s*([\d.]+(?:,\d{1,2})?)", answer_text)
-    if not amounts:
-        return answer_text
-    source_price = re.search(r"^Price \(BRL\): ([\d.,]+)$", evidence.text, re.MULTILINE)
-    if source_price is None:
-        return local_answer("", evidence)
-    expected = brl(float(source_price.group(1).replace(",", ".")))
-    if any("R$ " + amount != expected for amount in amounts):
-        return local_answer("", evidence)
-    return answer_text
-
-
 def print_response(
     question: str,
     prefix: str = "",
     history: list[dict[str, str]] | None = None,
     previous: Evidence | None = None,
+    metadata: dict | None = None,
 ) -> tuple[str, Evidence | None]:
+    metadata = metadata if metadata is not None else {}
     if is_order_request(question):
+        metadata.update(path="local", tool_calls=[])
         answer = answer_order_status()
         print(f"{prefix}{answer}")
         return answer, None
     if clearly_out_of_scope(question):
+        metadata.update(path="local", tool_calls=[])
         answer = "Não consigo ajudar com perguntas de conhecimento geral. Posso ajudar com instrumentos musicais, preços, disponibilidade, políticas da loja ou status de pedidos."
         print(f"{prefix}{answer}")
         return answer, None
     evidence = carry_over(load_evidence(question), previous, question)
-    answer = model_answer(question, evidence, history)
+    answer = model_answer(question, evidence, history, metadata)
     print(f"{prefix}{answer}")
     if evidence:
         print(f"Fonte: {evidence.source}")
