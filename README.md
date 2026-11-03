@@ -1,76 +1,83 @@
-# Empório da Música CLI
+# Empório da Música customer service agent
 
-A small Python command-line agent for the Empório da Música case. It answers product questions from the supplied products CSV, store-policy questions from the policy PDF, and redirects unrelated questions. Order and customer records are never sent to the model.
+A Python CLI prototype for customer questions about products, store policies, and order status. Customer-facing replies are in Brazilian Portuguese. With no model endpoint configured, the existing keyword router and local templates answer offline.
+
+## Quick start
+
+Python 3.10+ and `make` are required. From the repository root:
+
+```sh
+make setup
+make policies   # regenerate the policy wiki from the source PDF
+make test
+make demo
+make chat
+make help
+```
+
+`make ask Q="Quanto custa o Yamaha C40?"` asks one question. `make order` runs the local order flow with fictional fixture data. Install dependencies manually with `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -e .`.
 
 ## Run
 
-Python 3.10 or newer and `pdftotext` are required. No Python packages need installation.
-
 ```sh
-python3 tools/agent_cli.py "Quanto custa o Takamine GD20?"
-python3 tools/agent_cli.py "Comprei online há cinco dias e me arrependi. Posso devolver?"
-ORDER_DATA_DIR=examples/fixtures python3 tools/agent_cli.py "Qual é o status do meu pedido?"
-python3 tools/agent_cli.py
+python tools/agent_cli.py "Quanto custa o Takamine GD20?"
+python tools/agent_cli.py "Quais violões vocês têm até R$ 1.000?"
+python tools/agent_cli.py "Qual é o endereço da loja?"
+python tools/agent_cli.py "Comprei online há cinco dias e me arrependi. Posso devolver?"
+python tools/agent_cli.py "Qual é a capital da França?"
+ORDER_DATA_DIR=examples/fixtures python tools/agent_cli.py "Qual é o status do meu pedido?"
+python tools/agent_cli.py --preflight
 ```
 
-The model defaults to `lfm3-omni-2b` at `http://100.111.77.36:1234/v1`, using the OpenAI-compatible Chat Completions endpoint. Change `OPENAI_BASE_URL` and `OPENAI_MODEL` to use another server or model. A local server does not need an API key; set `OPENAI_API_KEY` only if your server requires one. The CLI uses local templates when the server is unavailable.
+Order verification asks locally for the order number, registered email, and registered phone. The fictional fixture order uses `TESTE-100`, `cliente@example.test`, and `67999990000`.
 
-To use the example settings, copy `.env.example` to `.env` and load it in your shell before running the CLI:
+## Model setup
+
+Without `OPENAI_BASE_URL`, the CLI uses local answers and never contacts a model. To enable an OpenAI-compatible Chat Completions endpoint, configure `OPENAI_BASE_URL`, `OPENAI_MODEL`, and (when required) `OPENAI_API_KEY`. The CLI does not load `.env` itself; Make loads the optional `.env` file.
 
 ```sh
 cp .env.example .env
-set -a
-source .env
-set +a
-python3 tools/agent_cli.py "Quanto custa o Takamine GD20?"
+# Set OPENAI_BASE_URL, OPENAI_MODEL, and optionally OPENAI_API_KEY.
+make ask Q="Como funciona a garantia?"
 ```
 
-The CLI reads environment variables directly; it does not parse `.env` files itself. Loading `.env` in the shell avoids a dotenv dependency. Keep real credentials in `.env`, which is ignored by Git.
+Tool calling is enabled by default for configured endpoints. Set `AGENT_TOOLS=0` to force the legacy evidence-in-prompt model call. If the server rejects `tools`, the CLI retries through that legacy path; if the model call fails, it uses the local answer. GPT-4o mini is a hosted option with tool calling. For local use, Qwen 2.5 7B or larger models in LM Studio are reasonable candidates when their served template supports tools. Small models such as `lfm3-omni-2b` may not call tools reliably. Model capability depends on the provider and endpoint configuration.
 
-## Technical choices
+## Design choices
 
-**Approach and retrieval.** A keyword router sends product questions to the products CSV, store-rule questions to the policy PDF, and order-status requests to a local verifier. Product lookup uses word overlap against product names and returns the unique best match. Policy lookup extracts up to 18,000 characters with `pdftotext`. This direct approach fits the fixed demo sources. I did not evaluate a vector database or agent framework because the brief does not require semantic retrieval.
+- **Agent shape:** a short OpenAI Chat Completions tool loop, limited to four tool rounds. It uses the standard library `urllib`, with no agent framework, embeddings, or vector database. The model chooses a local function; Python reads the source and returns its result for the model to explain.
+- **Knowledge wiki:** `make policies` uses `pypdf` to reproducibly extract the supplied policy PDF into numbered Markdown sections at `knowledge/policies/store.md`. `knowledge/INDEX.md` lists the available policy topics, catalog categories, and order source; it is included in the system prompt. The PDF remains the source of truth.
+- **Tools:** `search_products(query)` and `list_category(category, max_price?, beginner?)` read the operational products CSV; `read_policy(section)` reads one Markdown section; `check_order_status()` starts the existing local verification flow. Tool JSON is validated before source access. Unknown tools and malformed arguments produce safe tool results.
+- **Catalog replies:** category and budget questions are filtered and sorted in Python, then rendered locally from the matching rows. This keeps weak models from changing category names, including over-budget products as matches, or inventing prices. Each lookup states its category, match count, and price-limit rule. A new category starts a fresh lookup; price limits are not inherited from the previous turn. For product answers that do use a model, any currency amount that differs from the CSV price falls back to the local answer.
+- **Privacy:** order number, email, and phone are collected and checked locally. The model sees only verified status and estimated delivery. Email addresses and phone-like values are redacted from user messages and chat history before model requests. Customer and order CSV rows are never sent to the model.
+- **Fallback and UI:** no endpoint means unchanged offline keyword routing. Unsupported tool endpoints fall back to the existing evidence-in-prompt model path, then local templates on failure. The interface is a one-shot or interactive CLI. History stays in memory and is bounded to six recent messages.
+- **Source handling:** product facts come from the products CSV; policy facts come from the PDF-derived Markdown. Order and stock data are static snapshots. The supplied case brief leaves the framework, provider, model, UI, and persistence choices open; this prototype keeps the implementation small and documents those choices here.
 
-**Model and prompt.** The default is the locally served `lfm3-omni-2b` model supplied for this project. The CLI calls its OpenAI-compatible Chat Completions endpoint with Python's `urllib`, so no API SDK is needed. The system prompt sets a cordial Brazilian Portuguese tone, restricts answers to retrieved evidence, asks the model to state when facts are missing, and requires the full return conditions when answering about regret returns. It also labels stock as a snapshot and tells the model not to disclose personal data. The CLI does not enforce these prompt instructions with an output validator.
-
-**Interface and state.** The CLI supports one-shot and interactive use because the brief permits a CLI and the examples need no web interface. It does not save conversation history because this demonstration handles one request at a time and does not require memory.
-
-**Data handling.** Product and policy evidence can go to the model. Order status is checked before model routing by matching the order ID and registered email locally. The CLI hides the email input and returns only status and estimated delivery. Real customer and order CSVs stay local and are ignored by Git; the public example uses fictional rows in `examples/fixtures/`. The hidden email is used only in the order lookup. Matched product and policy questions are sent to the model as typed, so do not include contact details in those messages. Out-of-scope questions use a local reply. Email matching is a basic demonstration safeguard, not production authentication.
-
-If the model request fails, local replies cover product lookup, the documented online-return case, and out-of-scope questions. Other policy questions need the model to summarize the retrieved manual text.
-
-For the full decision record, evidence links, and limits, see [Technical decisions](docs/architecture.md).
-
-## Limits
-
-- Product matching is lexical and designed for the supplied case, not a production catalog.
-- Stock is shown from the supplied CSV snapshot. It is not live inventory.
-- Order lookup asks for the order ID and registered email, then returns only status and estimated delivery. This email check is a basic demo safeguard, not production identity verification. Real customer and order CSVs are not included in the public repository.
-- Install `pdftotext` to answer policy questions.
-- Prompt rules are instructions, not enforced guarantees; matched product and policy questions are sent to the configured model as typed.
-
-## Future improvements
-
-- Replace email matching with a stronger identity check before using real customer data.
-- Improve product matching to handle more paraphrases and spelling variations.
-- Add automated checks for source-backed answers and out-of-scope handling.
-
-## Development assistance
-
-OpenAI Codex was used to inspect the challenge materials, implement and review the prototype, and maintain the project documentation. Decisions and limitations were checked against the supplied brief and source files.
-
-Four CLI conversations are saved in [examples/conversations.md](examples/conversations.md). They cover product lookup, a return-policy question, an order-status lookup using fictional data, and an out-of-scope question.
-
-The CLI uses the OpenAI-compatible `/chat/completions` endpoint so it can connect to local inference servers.
-
-## Python code checks
-
-Run the project checker:
+## Tests and examples
 
 ```sh
-sh scripts/check_python.sh
+python -m unittest discover -s tests -v
+PATH=/tmp/emporio-venv/bin:$PATH sh scripts/check_python.sh
 ```
 
-The script uses Ruff from `PATH`, or downloads it into the `uvx` cache when `uvx` is installed. Otherwise, install Ruff in a virtual environment first. It checks Python files under `tools/` and `scripts/` for common errors, import order, formatting, function complexity, and a 300-line file limit. Set `PYTHON_MAX_FILE_LINES` to change the size limit. Ruff settings live in `pyproject.toml`.
+## QA
 
-The checker enforces a 300-line file limit and Ruff complexity checks. Treat those limits as review triggers, not measures of responsibility. Split a file when unrelated changes repeatedly touch it or it owns distinct data sources and workflows.
+Run the conversational QA scenarios against the configured local model, or offline when `OPENAI_BASE_URL` is unset:
+
+```sh
+make qa
+QA_SCENARIO=order make qa
+QA_OUT=/tmp/emporio-qa make qa
+```
+
+Each run starts fresh conversations, preserves history between turns, and writes a Markdown transcript plus JSONL records under `qa/results/`. The command exits nonzero when a check fails. Reports are local and ignored by Git.
+
+The offline tests use synthetic data and a local fake OpenAI-compatible server. They cover tool dispatch, multiple rounds, bad and unknown calls, unsupported-tool fallback, PII redaction, legacy behavior, and policy facts checked against the PDF. Five offline conversations are in [examples/conversations.md](examples/conversations.md).
+
+## Limitations
+
+Product matching and category inference are lexical; categories are inferred from names and descriptions because the current product lookup does not depend on category labels. There is no live inventory, promotion feed, or order integration. The price check covers currency amounts in product answers; provider-specific tool support can vary. Email and phone checks are a demo safeguard, not production identity verification. Policy text is faithfully extracted but may need manual cleanup if the PDF layout changes; the PDF comparison test guards selected facts, not every sentence.
+
+## AI tools
+
+OpenAI Codex assisted with challenge analysis, implementation, review, and documentation. Offline tests and source comparisons were used to check behavior. A model endpoint is optional at runtime.

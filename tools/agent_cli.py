@@ -4,23 +4,33 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
+import difflib
 import os
 import re
-import subprocess
 import sys
 import unicodedata
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
+from catalog import brl, category_evidence
+from intent_router import clearly_out_of_scope
+from offline_answers import Evidence, carry_over, local_answer
 from order_status import answer_order_status, is_order_request
+from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
+from pypdf import PdfReader
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
-PRODUCTS = next(DATA.glob("*products.csv"))
-POLICY_PDF = next(DATA.glob("*pol*.pdf"))
+try:
+    DATA = resolve_data_dir()
+except FileNotFoundError:
+    DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
+PRODUCTS = Path(
+    os.getenv("PRODUCTS_CSV") or next(DATA.glob("*products.csv"), DATA / "products.csv")
+)
+try:
+    POLICY_PDF = resolve_policy_pdf()
+except FileNotFoundError:
+    POLICY_PDF = DATA / "politicas_da_loja.pdf"
 POLICY_TERMS = (
     "troca",
     "devol",
@@ -37,18 +47,6 @@ POLICY_TERMS = (
     "frete",
     "entrega",
     "garantia",
-)
-PRODUCT_TERMS = (
-    "preco",
-    "custa",
-    "valor",
-    "estoque",
-    "disponivel",
-    "produto",
-    "violao",
-    "guitarra",
-    "piano",
-    "instrumento",
 )
 IGNORED_PRODUCT_WORDS = {
     "preco",
@@ -77,14 +75,23 @@ IGNORED_PRODUCT_WORDS = {
     "tem",
     "com",
     "para",
+    "baixo",
+    "barato",
+    "caro",
+    "mais",
+    "mil",
+    "reais",
+    "entre",
+    "abaixo",
+    "maximo",
 }
 
 
-@dataclass(frozen=True)
-class Evidence:
-    kind: str
-    source: str
-    text: str
+def source_name(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def normalize(text: str) -> str:
@@ -92,15 +99,26 @@ def normalize(text: str) -> str:
     return "".join(char for char in text if not unicodedata.combining(char))
 
 
+def _correct_category_typos(query: str) -> str:
+    categories = ("violao", "guitarra", "ukulele", "teclado", "bateria")
+    for word in re.findall(r"[a-z]+", query):
+        suggestion = difflib.get_close_matches(word, categories, n=1, cutoff=0.82)
+        if suggestion:
+            query = re.sub(rf"\b{word}\b", suggestion[0], query)
+    return query
+
+
 def load_evidence(question: str) -> Evidence | None:
     query = normalize(question)
-    if any(term in query for term in POLICY_TERMS):
-        extracted = subprocess.run(
-            ["pdftotext", "-layout", str(POLICY_PDF), "-"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
+    query = _correct_category_typos(query.replace("violoes", "violao"))
+    if re.search(r"\b(celular|notebook|computador|pc)\b", query):
+        return None
+    if any(term in query for term in POLICY_TERMS) or any(
+        term in query for term in ("onde fica", "abre", "fecha", "funciona")
+    ):
+        extracted = " ".join(
+            " ".join((page.extract_text() or "").split()) for page in PdfReader(POLICY_PDF).pages
+        )
         return Evidence("policy", str(POLICY_PDF.relative_to(ROOT)), extracted[:18000])
 
     with PRODUCTS.open(encoding="utf-8-sig", newline="") as file:
@@ -116,21 +134,18 @@ def load_evidence(question: str) -> Evidence | None:
         score = len(query_words & name_words)
         if score:
             matches.append((score, row_number, row))
-    if matches or any(term in query for term in PRODUCT_TERMS):
-        if not matches:
-            return Evidence(
-                "product",
-                str(PRODUCTS.relative_to(ROOT)),
-                "No matching product was found in the catalog.",
-            )
+    listed = category_evidence(query, rows, source_name(PRODUCTS))
+    if listed is not None and not (matches and max(match[0] for match in matches) > 1):
+        return listed
+    if matches:
         best_score = max(match[0] for match in matches)
         best = [match for match in matches if match[0] == best_score]
         if len(best) != 1:
             names = ", ".join(match[2]["name"] for match in best[:5])
             return Evidence(
                 "product",
-                str(PRODUCTS.relative_to(ROOT)),
-                f"Several products may match. Ask the customer to clarify: {names}",
+                source_name(PRODUCTS),
+                f"Encontrei mais de um produto possível. Qual deles você procura? {names}",
             )
         _, row_number, row = best[0]
         text = (
@@ -138,123 +153,119 @@ def load_evidence(question: str) -> Evidence | None:
             f"Stock in supplied CSV snapshot: {row['stock_quantity']}\nStatus: {row['status']}\n"
             f"Description: {row['description']}\nCSV row: {row_number}"
         )
-        return Evidence("product", str(PRODUCTS.relative_to(ROOT)), text)
+        return Evidence("product", source_name(PRODUCTS), text)
     return None
 
 
-def local_answer(question: str, evidence: Evidence | None) -> str:
-    if evidence is None:
-        return "Oi! Posso ajudar com instrumentos musicais, preços e disponibilidade do catálogo, além das políticas da loja."
-    if evidence.kind == "product":
-        if evidence.text.startswith("No matching") or evidence.text.startswith("Several products"):
-            return evidence.text
-        values = dict(line.split(": ", 1) for line in evidence.text.splitlines() if ": " in line)
-        price = float(values["Price (BRL)"])
-        price_brl = f"R$ {price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        status = (
-            "disponível"
-            if values["Status"] == "active" and int(values["Stock in supplied CSV snapshot"]) > 0
-            else "indisponível"
-        )
-        return f"Oi! {values['Name']} está cadastrado por {price_brl} e aparece como {status} no arquivo, com {values['Stock in supplied CSV snapshot']} unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo."
-    if any(term in normalize(question) for term in ("arrepend", "devol", "retorn")):
-        return (
-            "Oi! Para compras online, você pode pedir a devolução em até 7 dias corridos após receber o produto, sem justificar. "
-            "Ele precisa estar sem uso, na embalagem original e com acessórios e manuais. A loja paga o frete de devolução, "
-            "e o reembolso ocorre pela forma de pagamento original em até 10 dias úteis."
-        )
-    return "Encontrei informações da política da loja. Não consegui resumir esta política agora; consulte a fonte ou fale com a equipe da loja."
-
-
-def model_answer(question: str, evidence: Evidence | None) -> str:
-    if evidence is None:
+def model_answer(
+    question: str, evidence: Evidence | None, history: list[dict[str, str]] | None = None
+) -> str:
+    if evidence is not None and evidence.kind == "category":
         return local_answer(question, evidence)
-    base_url = os.getenv("OPENAI_BASE_URL", "http://100.111.77.36:1234/v1").rstrip("/")
-    instructions = (
-        "Você atende a Empório da Música. Responda em português brasileiro, com tom informal e profissional. "
-        "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. O estoque é uma fotografia do CSV, não tempo real. "
-        "Em perguntas sobre arrependimento de compra online, inclua o prazo, as condições do produto, "
-        "quem paga o frete de devolução, a forma e o prazo do reembolso, se constarem na evidência. "
-        "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais."
-    )
-    payload = json.dumps(
-        {
-            "model": os.getenv("OPENAI_MODEL", "lfm3-omni-2b"),
-            "messages": [
-                {"role": "system", "content": instructions},
-                {
-                    "role": "user",
-                    "content": f"Pergunta do cliente: {question}\n\nEvidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}",
-                },
-            ],
-        }
-    ).encode()
-    request = Request(
-        f"{base_url}/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', 'local')}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=45) as response:
-            result = json.loads(response.read())
-        return result["choices"][0]["message"]["content"].strip()
-    except (
-        HTTPError,
-        URLError,
-        TimeoutError,
-        ValueError,
-        KeyError,
-        IndexError,
-        TypeError,
-    ) as error:
-        print(
-            f"API indisponível ({error}); usando resposta local baseada na fonte.", file=sys.stderr
-        )
+    base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
+    if not base_url:
         return local_answer(question, evidence)
+    if os.getenv("AGENT_TOOLS", "1") != "0":
+        from tool_calling import run_tool_agent
+
+        try:
+            answer = run_tool_agent(question, history)
+            if answer:
+                return _check_model_prices(answer, evidence)
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as error:
+            print(
+                f"API com ferramentas indisponível ({error}); tentando caminho legado.",
+                file=sys.stderr,
+            )
+    from legacy_model import answer
+
+    return _check_model_prices(answer(question, evidence, history), evidence)
 
 
-def print_response(question: str, prefix: str = "") -> None:
+def _check_model_prices(answer_text: str, evidence: Evidence | None) -> str:
+    if evidence is None or evidence.kind != "product":
+        return answer_text
+    amounts = re.findall(r"R\$\s*([\d.]+(?:,\d{1,2})?)", answer_text)
+    if not amounts:
+        return answer_text
+    source_price = re.search(r"^Price \(BRL\): ([\d.,]+)$", evidence.text, re.MULTILINE)
+    if source_price is None:
+        return local_answer("", evidence)
+    expected = brl(float(source_price.group(1).replace(",", ".")))
+    if any("R$ " + amount != expected for amount in amounts):
+        return local_answer("", evidence)
+    return answer_text
+
+
+def print_response(
+    question: str,
+    prefix: str = "",
+    history: list[dict[str, str]] | None = None,
+    previous: Evidence | None = None,
+) -> tuple[str, Evidence | None]:
     if is_order_request(question):
-        print(f"{prefix}{answer_order_status()}")
-        return
-    evidence = load_evidence(question)
-    print(f"{prefix}{model_answer(question, evidence)}")
+        answer = answer_order_status()
+        print(f"{prefix}{answer}")
+        return answer, None
+    if clearly_out_of_scope(question):
+        answer = "Não consigo ajudar com perguntas de conhecimento geral. Posso ajudar com instrumentos musicais, preços, disponibilidade, políticas da loja ou status de pedidos."
+        print(f"{prefix}{answer}")
+        return answer, None
+    evidence = carry_over(load_evidence(question), previous, question)
+    answer = model_answer(question, evidence, history)
+    print(f"{prefix}{answer}")
     if evidence:
         print(f"Fonte: {evidence.source}")
+    return answer, evidence
+
+
+def preflight() -> None:
+    missing = [str(path) for path in (PRODUCTS, POLICY_PDF) if not path.is_file()]
+    if missing:
+        print("Missing required data files: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(2)
+    print(f"Data files: OK ({PRODUCTS.name}, {POLICY_PDF.name})")
+    endpoint = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
+    if not endpoint:
+        print("Model endpoint: not configured; local answers are enabled")
+        return
+    try:
+        with urlopen(f"{endpoint}/models", timeout=5) as response:
+            response.read(1)
+        print(f"Model endpoint: reachable ({endpoint})")
+    except (HTTPError, URLError, TimeoutError, ValueError) as error:
+        print(f"Model endpoint: unavailable ({error}); local answers are enabled")
+        raise SystemExit(1)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--preflight", action="store_true", help="check source files and model endpoint"
+    )
+    parser.add_argument(
         "message", nargs="*", help="customer message; omit to start interactive mode"
     )
     args = parser.parse_args()
-    if args.message:
+    if args.preflight:
+        preflight()
+    elif args.message:
         try:
             print_response(" ".join(args.message))
-        except (OSError, subprocess.CalledProcessError, StopIteration) as error:
+        except (OSError, StopIteration) as error:
             parser.error(f"não consegui consultar as fontes: {error}")
-        return
+    else:
+        from chat_cli import interactive
 
-    print("Empório da Música. Digite 'sair' para encerrar.")
-    while True:
-        try:
-            question = input("Você: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if question.casefold() in {"sair", "exit", "quit"}:
-            break
-        if not question:
-            continue
-        try:
-            print_response(question, "Loja: ")
-        except (OSError, subprocess.CalledProcessError, StopIteration) as error:
-            print(f"Não consegui consultar as fontes: {error}", file=sys.stderr)
+        interactive()
 
 
 if __name__ == "__main__":

@@ -23,4 +23,4 @@ Ajudar a equipe da Empório da Música a responder perguntas recorrentes por men
 
 ## Implementação atual
 
-O protótipo está em `tools/agent_cli.py`. Ele consulta o CSV de produtos e o PDF de políticas. Para status de pedido, confere localmente o número do pedido e o e-mail cadastrado, sem enviar esses dados ao modelo. A resposta mostra apenas status e previsão de entrega. Consultas de promoções não são suportadas.
+O protótipo está em `tools/agent_cli.py`. Sem endpoint, mantém roteamento local por palavras-chave. Com endpoint, o modelo chama ferramentas que consultam o CSV de produtos ou seções do wiki Markdown. Para status de pedido, número, e-mail e telefone são verificados localmente; ao modelo só chegam status e previsão de entrega. Consulte promoções não é suportada via CSV.

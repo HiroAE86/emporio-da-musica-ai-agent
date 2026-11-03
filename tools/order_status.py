@@ -7,8 +7,9 @@ import getpass
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
+from project_paths import ROOT, resolve_data_dir
+
+DATA = resolve_data_dir()
 SAMPLE_DATA = ROOT / "examples" / "fixtures"
 
 
@@ -33,18 +34,17 @@ def _order_files() -> tuple[Path, Path] | None:
     return (orders, customers) if orders and customers else None
 
 
-def answer_order_status() -> str:
-    try:
-        order_id = input("Número do pedido: ").strip()
-        email = getpass.getpass("E-mail cadastrado: ").strip().casefold()
-    except (EOFError, KeyboardInterrupt):
-        return "Consulta cancelada."
-    if not order_id or not email:
-        return "Informe o número do pedido e o e-mail cadastrado."
-    files = _order_files()
-    if files is None:
-        return "Não consegui consultar pedidos agora. Fale com a equipe da loja."
-    orders_path, customers_path = files
+GENERIC_MISMATCH = "Não encontrei um pedido com esses dados. Confira e tente novamente."
+
+
+def lookup_order_status(
+    order_id: str,
+    email: str,
+    phone: str,
+    orders_path: Path,
+    customers_path: Path,
+) -> str:
+    """Return limited order details only after matching all registered identifiers."""
     try:
         with customers_path.open(encoding="utf-8-sig", newline="") as file:
             customers = {
@@ -55,14 +55,33 @@ def answer_order_status() -> str:
                 row for row in csv.DictReader(file) if row.get("order_id", "").strip() == order_id
             ]
         if len(matches) != 1:
-            return "Não encontrei um pedido com esses dados. Confira e tente novamente."
+            return GENERIC_MISMATCH
         order = matches[0]
         customer = customers.get(order.get("customer_id", ""))
-        if not customer or customer.get("email", "").strip().casefold() != email:
-            return "Não encontrei um pedido com esses dados. Confira e tente novamente."
+        if (
+            not customer
+            or customer.get("email", "").strip().casefold() != email.strip().casefold()
+            or customer.get("phone", "").strip() != phone.strip()
+        ):
+            return GENERIC_MISMATCH
         status = order.get("status", "").strip() or "não informado"
         delivery = order.get("estimated_delivery", "").strip() or "não informada"
-        source = orders_path.name
-        return f"Status do pedido: {status}. Previsão de entrega: {delivery}. Fonte: {source}."
+        return f"Status do pedido: {status}. Previsão de entrega: {delivery}. Fonte: {orders_path.name}."
     except (OSError, KeyError, csv.Error):
         return "Não consegui consultar pedidos agora. Fale com a equipe da loja."
+
+
+def answer_order_status() -> str:
+    try:
+        order_id = input("Número do pedido: ").strip()
+        email = getpass.getpass("E-mail cadastrado: ").strip().casefold()
+        phone = getpass.getpass("Telefone cadastrado: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return "Consulta cancelada."
+    if not order_id or not email:
+        return "Informe o número do pedido e o e-mail cadastrado."
+    files = _order_files()
+    if files is None:
+        return "Não consegui consultar pedidos agora. Fale com a equipe da loja."
+    orders_path, customers_path = files
+    return lookup_order_status(order_id, email, phone, orders_path, customers_path)

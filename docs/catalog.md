@@ -6,8 +6,8 @@
 
 ## Método de busca
 
-O CLI verifica termos de política antes de procurar produto. Para produto, normaliza caixa e acentos, compara palavras da pergunta com palavras do nome e escolhe o maior resultado único. Em caso de empate, envia ao modelo uma instrução para pedir esclarecimento; se o modelo falhar, a resposta local mostra essa instrução em inglês. O método é lexical; não promete busca semântica.
+O caminho offline verifica termos de política antes de procurar produto. Para produto, normaliza caixa e acentos, compara palavras da pergunta com palavras do nome e escolhe o maior resultado único. A ferramenta `search_products` reutiliza essa busca; `list_category` filtra a lista local por categoria, orçamento e indicação para iniciantes. O método é lexical; não promete busca semântica.
 
 ## Fontes não usadas
 
-`categories.csv` e `promotions.csv` são fornecidos pelo desafio, mas o protótipo não os consulta. A primeira versão cobre busca de produto por nome, preço e disponibilidade. Listas por orçamento, navegação por categoria e consulta de promoções ficam para uma versão futura.
+`categories.csv` e `promotions.csv` não são usados por estas ferramentas. Categoria é inferida pelo nome e descrição do produto. Promoções e seus períodos não são consultados.

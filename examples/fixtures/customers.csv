@@ -1,2 +1,2 @@
 customer_id,name,phone,email,city
-fixture-customer,Cliente Exemplo,,cliente@example.test,Exemplo
+fixture-customer,Cliente Exemplo,67999990000,cliente@example.test,Exemplo

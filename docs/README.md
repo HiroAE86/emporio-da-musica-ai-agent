@@ -10,6 +10,7 @@ Protótipo de agente de atendimento por mensagens para apoiar a equipe da loja f
 - [Catálogo e promoções](catalog.md) — produtos, categorias, preços e disponibilidade.
 - [Pedidos e clientes](orders.md) — consultas de pedidos e dados relacionados.
 - [Políticas da loja](store-policies.md) — regras de atendimento contidas no manual.
+- [Wiki de políticas](../knowledge/policies/store.md) — Markdown gerado do manual PDF com `make policies`.
 - [Arquitetura e operação](architecture.md) — escolhas técnicas, execução e limitações.
 - [Exemplos de conversa](conversations.md) — cenários para o conjunto de demonstração.
 - [Requisitos completos](requirements.md) — requisitos e entregáveis extraídos do desafio.
