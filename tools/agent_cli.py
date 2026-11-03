@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from catalog import category_evidence
 from offline_answers import Evidence, local_answer
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
@@ -118,29 +119,9 @@ def load_evidence(question: str) -> Evidence | None:
         score = len(query_words & name_words)
         if score:
             matches.append((score, row_number, row))
-    budget_match = re.search(r"\b(?:ate|abaixo de|no maximo)\s+r?\$?\s*([\d.,]+)", query)
-    category_terms = ("violao", "guitarra", "baixo", "bateria", "teclado", "piano", "ukulele")
-    category_query = (
-        any(re.search(rf"\b{term}s?\b", query) for term in category_terms) and budget_match
-    )
-    if category_query:
-        maximum = float(budget_match.group(1).replace(".", "").replace(",", "."))
-        category = next(term for term in category_terms if re.search(rf"\b{term}s?\b", query))
-        selected = []
-        for row_number, row in enumerate(rows, start=2):
-            searchable = normalize(row["name"] + " " + row["description"])
-            price = float(row["price_brl"].replace(",", "."))
-            if category in searchable and price <= maximum:
-                available = row["status"] == "active" and int(row["stock_quantity"]) > 0
-                selected.append(
-                    f"{row['name']} — R$ {price:,.2f} — {'disponível' if available else 'indisponível'} (linha {row_number})"
-                )
-        text = (
-            "\n".join(selected)
-            if selected
-            else f"Nenhum produto da categoria {category} até R$ {maximum:.2f}."
-        )
-        return Evidence("category", source_name(PRODUCTS), text)
+    listed = category_evidence(query, rows, source_name(PRODUCTS))
+    if listed is not None and not (matches and max(match[0] for match in matches) > 1):
+        return listed
     if matches or any(term in query for term in PRODUCT_TERMS):
         if not matches:
             return Evidence(

@@ -36,6 +36,27 @@ class AgentBehaviorTests(unittest.TestCase):
             self.assertIn("disponível", local_answer("", evidence))
             self.assertIn("Nenhum produto", local_answer("", empty))
 
+    def test_category_without_budget_and_catalog_overview(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,599.9,Yamaha C40,5,Violão clássico ideal para iniciantes,3,active\n"
+                "b,1699,Yamaha CG162S,5,Violão clássico com tampo sólido,2,active\n"
+                "c,5400,Fender Telecaster,6,Guitarra elétrica,1,active\n"
+                "d,199.9,Kala KA-15S,7,Ukulele soprano que lembra um violão pequeno,4,active\n",
+                encoding="utf-8",
+            )
+            with patch("agent_cli.PRODUCTS", csv_path):
+                beginner = local_answer("", load_evidence("Sou iniciante, qual violão recomenda?"))
+                guitars = local_answer("", load_evidence("e guitarra?"))
+                overview = local_answer("", load_evidence("O que vocês têm?"))
+            self.assertTrue(beginner.index("Yamaha C40") < beginner.index("CG162S"))
+            self.assertNotIn("Kala", beginner)
+            self.assertIn("R$ 1.699,00", beginner)
+            self.assertIn("Fender Telecaster", guitars)
+            self.assertIn("guitarras: 1 produto(s)", overview)
+
     def test_policy_answers_use_extracted_text_and_unknown_fails_closed(self) -> None:
         class Page:
             def extract_text(self) -> str:

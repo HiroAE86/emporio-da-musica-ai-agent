@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -35,7 +34,7 @@ def local_answer(question: str, evidence: Evidence | None) -> str:
         )
         return f"Oi! {values['Name']} está cadastrado por {formatted} e aparece como {status} no arquivo, com {values['Stock in supplied CSV snapshot']} unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo."
     if evidence.kind == "category":
-        formatted = re.sub(r"R\$ ([\d]+)\.(\d{2})", r"R$ \1,\2", evidence.text)
+        formatted = evidence.text
         if formatted.startswith("Nenhum"):
             return "Oi! " + formatted
         return "Oi! Encontrei estas opções no catálogo:\n" + formatted
