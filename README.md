@@ -4,7 +4,7 @@ A Python CLI prototype for customer questions about products, store policies, an
 
 ## Quick start
 
-Python 3.10+ and `make` are required. From the repository root:
+Python 3.10+ and `make` are required. `make setup` creates `.venv` and installs the project, including `pypdf`. From the repository root:
 
 ```sh
 make setup
@@ -14,6 +14,10 @@ make demo
 make chat
 make help
 ```
+
+To run the direct `python` commands below after setup, activate the environment with `. .venv/bin/activate`.
+
+`make policies` uses the supplied policy PDF to regenerate `knowledge/policies/store.md`; it does not require `pdftotext`. `make test` runs the unittest suite. `make lint` installs Ruff in the project environment and runs the Python quality checker. `make preflight` checks the data files and configured model endpoint. `make qa` runs the scenario suite against the configured endpoint, or offline when `OPENAI_BASE_URL` is unset.
 
 `make ask Q="Quanto custa o Yamaha C40?"` asks one question. `make order` runs the local order flow with fictional fixture data. Install dependencies manually with `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -e .`.
 
@@ -41,7 +45,9 @@ cp .env.example .env
 make ask Q="Como funciona a garantia?"
 ```
 
-Tool calling is enabled by default for configured endpoints. Set `AGENT_TOOLS=0` to force the legacy evidence-in-prompt model call. If the server rejects `tools`, the CLI retries through that legacy path; if the model call fails, it uses the local answer. GPT-4o mini is a hosted option with tool calling. For local use, Qwen 2.5 7B or larger models in LM Studio are reasonable candidates when their served template supports tools. Small models such as `lfm3-omni-2b` may not call tools reliably. Model capability depends on the provider and endpoint configuration.
+Tool calling is enabled by default for configured endpoints. Set `AGENT_TOOLS=0` to force the legacy evidence-in-prompt model call. If the server rejects `tools`, the CLI retries through that legacy path; if the model call fails, it uses the local answer.
+
+The model tested for this project was **`lfm3-omni-2b` served by LM Studio** through its OpenAI-compatible endpoint. Inference runs locally, has no per-token API charge, and does not send data to a hosted model provider. In the QA setup, the CLI reached the LM Studio host over the network. The QA run on **2026-11-03** passed **15/15 scenarios and 45/45 checks** in tools mode. This result shows that deterministic retrieval and code-side filtering can keep the flow useful with a 2B model; it does not mean every small model will call tools consistently. For a hosted alternative, `gpt-4o-mini` is a reasonable option; for local use, try Qwen 2.5 7B or larger with a tool-capable LM Studio template. Hosted models add usage cost and send request content to the provider; local models avoid that transfer but need local compute and may add latency. Tool-call reliability varies by model, quantization, serving template, and endpoint.
 
 ## Design choices
 
@@ -78,6 +84,8 @@ The offline tests use synthetic data and a local fake OpenAI-compatible server. 
 
 Product matching and category inference are lexical; categories are inferred from names and descriptions because the current product lookup does not depend on category labels. There is no live inventory, promotion feed, or order integration. The price check covers currency amounts in product answers; provider-specific tool support can vary. Email and phone checks are a demo safeguard, not production identity verification. Policy text is faithfully extracted but may need manual cleanup if the PDF layout changes; the PDF comparison test guards selected facts, not every sentence.
 
-## AI tools
+## AI tools and development workflow
 
-OpenAI Codex assisted with challenge analysis, implementation, review, and documentation. Offline tests and source comparisons were used to check behavior. A model endpoint is optional at runtime.
+Codex CLI on a VPS implemented the project with the P-Stack skills: poteto-mode, interrogate/adversarial review, blast-radius, applicable `principle-*` skills, and unslop. Work proceeded in scoped rounds. A human set direction and reviewed each round; each round had a focused prompt, and tests, Ruff, and the 300-line file limit had to pass before its commit. Adversarial edge-case probing exposed phrasing bugs. Testing the real `lfm3-omni-2b` model through LM Studio exposed invented prices, category mix-ups, and budget carry-over; those failures led to deterministic pre-retrieval, code-side budget filtering, and a price grounding check. The QA harness gave the final 15/15 scenario and 45/45 check result.
+
+AI proposed and implemented changes; a human chose scope and reviewed them. Source-derived behavior was checked against the supplied CSVs and policy PDF, and the test suite and QA checks were run locally. The model did not determine the project requirements or the acceptance result.

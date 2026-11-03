@@ -268,7 +268,7 @@ class AgentBehaviorTests(unittest.TestCase):
             run_tool_agent("Consulte meu pedido")
         tool_content = str(captured[1]["messages"][-1]["content"])
         self.assertEqual(
-            "Status do pedido: shipped. Previsão de entrega: 2026-11-05.", tool_content
+            "Status do pedido: enviado. Previsão de entrega: 2026-11-05.", tool_content
         )
         request_text = json.dumps(captured[1])
         self.assertNotIn("cliente@example.test", request_text)
@@ -631,11 +631,14 @@ class AgentBehaviorTests(unittest.TestCase):
                 encoding="utf-8",
             )
             good = lookup_order_status("A-1", "shared@example.test", "111", orders, customers)
+            pending = lookup_order_status("B-1", "shared@example.test", "222", orders, customers)
             wrong_phone = lookup_order_status(
                 "A-1", "shared@example.test", "222", orders, customers
             )
             unknown = lookup_order_status("Z-9", "shared@example.test", "111", orders, customers)
-            self.assertIn("shipped", good)
+            self.assertIn("enviado", good)
+            self.assertNotIn("shipped", good)
+            self.assertIn("pendente", pending)
             self.assertEqual(GENERIC_MISMATCH, wrong_phone)
             self.assertEqual(GENERIC_MISMATCH, unknown)
 

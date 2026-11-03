@@ -1,50 +1,75 @@
-# Verified CLI conversations
+# Model conversation examples
 
-These five conversations were run offline against the supplied CSV and policy PDF. The order fixture is fictional.
+These transcripts were copied from `make qa` using `lfm3-omni-2b` through LM Studio in tools mode. Answers are verbatim from `/interviews/qa_mac_run2.md`. The verified order reply below was regenerated offline after translating CSV statuses to Brazilian Portuguese.
 
-## Products under a budget
+## Product recommendation with a budget
 
-**Customer:** Quais violões vocês têm até R$ 1.000?
+**Mode:** tools · **Source:** `Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv` · **QA:** `beginner-guitar-budget`
+
+**Customer:** Quero um violão para iniciante até R$ 500
 
 **Empório da Música:** Oi! Encontrei estas opções no catálogo:
-Yamaha C40 Nylon Natural — R$ 599,90 — disponível
-Yamaha C70 Nylon Natural — R$ 849,00 — disponível
+Categoria: violões
+Limite de preço desta consulta: R$ 500,00.
+Correspondências até R$ 500,00: 2
+Tagima Memphis AC-39 Nylon Natural — R$ 429,90 — disponível — Violão clássico com cordas de nylon, perfeito para quem está começando
+Rozini RC-104 Nylon Estudante — R$ 459,90 — disponível — Violão clássico de estudo da Rozini, feito com madeiras nacionais
+
+## Switching categories without carrying the budget
+
+**Mode:** tools · **Source:** `Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv` · **QA:** `category-switch-no-budget-carry`
+
+**Customer:** Quais violões até R$ 500?
+
+**Empório da Música:** Oi! Encontrei estas opções no catálogo:
+Categoria: violões
+Limite de preço desta consulta: R$ 500,00.
+Correspondências até R$ 500,00: 2
 Tagima Memphis AC-39 Nylon Natural — R$ 429,90 — disponível
-Giannini GN-15 Nylon Cedr Natural — R$ 689,00 — disponível
 Rozini RC-104 Nylon Estudante — R$ 459,90 — disponível
-Tagima Dallas Tuner Aço Natural — R$ 749,00 — disponível
-Yamaha F310 Aço Natural — R$ 699,90 — disponível
-Giannini GF-1R Aço Folk Sunburst — R$ 579,90 — disponível
-Shelby SN-100 Folk Aço Preto — R$ 549,00 — disponível
-Tagima Woodstock Dreadnought Natural — R$ 899,00 — disponível
-(mais 4 produto(s) nesta categoria)
-Fonte: Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv
 
-## Product price and availability
+**Customer:** e guitarra?
 
-**Customer:** Quanto custa o Takamine GD20?
+**Empório da Música:** Oi! Encontrei estas opções no catálogo:
+Categoria: guitarras
+Limite de preço desta consulta: nenhum; limites anteriores não são herdados.
+Fender Stratocaster American Pro II — R$ 12.500,00 — disponível
+Gibson Les Paul Standard '50s — R$ 18.900,00 — disponível
+Ibanez RG550 Genesis Collection — R$ 7.500,00 — disponível
+PRS SE Custom 24 — R$ 6.800,00 — disponível
+Fender Telecaster Player Series — R$ 5.400,00 — disponível
 
-**Empório da Música:** Oi! Takamine GD20 Dreadnought Natural está cadastrado por R$ 2.199,00 e aparece como disponível no arquivo, com 5 unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo.
-Fonte: Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv
+## Online purchase regret return
 
-## Exchange for a manufacturing defect
+**Mode:** tools · **Source:** `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf` · **QA:** `online-regret-policy`
 
-**Customer:** Como funciona a troca por defeito?
+**Customer:** Comprei online há cinco dias e me arrependi. Posso devolver?
 
-**Empório da Música:** Oi! Para defeito de fabricação, a troca pode ser solicitada em até 30 dias corridos após a compra. Trocas por preferência podem ser feitas em até 7 dias, conforme disponibilidade, com o produto em perfeito estado e na embalagem original. Há itens não elegíveis; consulte a equipe para confirmar seu caso.
-Fonte: Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf
+**Empório da Música:** Com base na nossa política de trocas e devoluções (seção 4.1 - Direito de Arrependimento), para compras online, você tem o direito de devolver o produto em até 7 dias corridos **após o recebimento**, sem necessidade de justificativa.
 
-## Order status with verification
+O prazo conta a partir do dia em que você recebeu a mercadoria, e não da data da compra. Se você receber o produto agora, por exemplo, terá 7 dias a partir desse recebimento para devolver.
 
-**Customer:** Qual é o status do meu pedido?
+Para aproveitar o direito de arrependimento, é importante que:
+- O produto esteja na sua **embalagem original**
+- Não apresente **sinais de uso**
+- Tenha todos os **acessórios e manuais** originais
 
-**CLI:** Número do pedido: TESTE-100
-**CLI:** E-mail cadastrado: cliente@example.test
-**CLI:** Telefone cadastrado: 67999990000
-**Empório da Música:** Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: orders.csv.
+Caso atendam a essas condições, o reembolso será processado na mesma forma de pagamento original, em até 10 dias úteis. O frete de devolução em caso de arrependimento é por conta da loja.
+
+Você tem o produto em mãos ou ainda está aguardando a entrega?
+
+## Verified order status
+
+**Mode:** offline · **Source:** `examples/fixtures/orders.csv` · **QA:** `order-happy-path` in `make qa` (status wording regenerated after the fix)
+
+**Customer:** Qual o status do pedido?
+
+**Empório da Música:** Status do pedido: enviado. Previsão de entrega: 2026-11-05. Fonte: orders.csv.
 
 ## Out of scope
 
+**Mode:** tools · **Source:** none · **QA:** `out-of-scope`
+
 **Customer:** Qual é a capital da França?
 
-**Empório da Música:** Oi! Posso ajudar com instrumentos musicais, preços e disponibilidade do catálogo, além das políticas da loja.
+**Empório da Música:** Não consigo ajudar com perguntas de conhecimento geral. Posso ajudar com instrumentos musicais, preços, disponibilidade, políticas da loja ou status de pedidos.

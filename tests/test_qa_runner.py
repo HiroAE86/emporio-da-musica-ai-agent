@@ -85,7 +85,7 @@ class QaRunnerTests(unittest.TestCase):
                     "turns": [{
                         "user": "Qual o status do pedido?",
                         "order_inputs": ["TESTE-100", "cliente@example.test", "67999990000"],
-                        "expect": {"must_contain": {"any": ["shipped", "entregue", "separação"]}},
+                        "expect": {"must_contain": {"all": ["enviado"]}, "must_not_contain": ["shipped"]},
                     }],
                 },
                 {
@@ -102,7 +102,7 @@ class QaRunnerTests(unittest.TestCase):
             }):
                 records, summary = run(scenarios)
             self.assertEqual(2, summary["passed_scenarios"])
-            self.assertEqual("Status do pedido: shipped.", records[0]["turns"][0]["answer"].split(" Previsão")[0])
+            self.assertEqual("Status do pedido: enviado.", records[0]["turns"][0]["answer"].split(" Previsão")[0])
             self.assertIn("Não consigo ajudar", records[1]["turns"][0]["answer"])
             self.assertEqual([], captured)
         finally:
