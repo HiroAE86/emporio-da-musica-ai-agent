@@ -167,9 +167,12 @@ def load_evidence(question: str) -> Evidence | None:
     return None
 
 
-def model_answer(question: str, evidence: Evidence | None) -> str:
-    if evidence is None:
-        return local_answer(question, evidence)
+HISTORY_MESSAGES = 6
+
+
+def model_answer(
+    question: str, evidence: Evidence | None, history: list[dict[str, str]] | None = None
+) -> str:
     base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
     if not base_url:
         return local_answer(question, evidence)
@@ -178,17 +181,21 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
         "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. O estoque é uma fotografia do CSV, não tempo real. "
         "Em perguntas sobre arrependimento de compra online, inclua o prazo, as condições do produto, "
         "quem paga o frete de devolução, a forma e o prazo do reembolso, se constarem na evidência. "
-        "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais."
+        "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais. "
+        "Sem evidência, responda cumprimentos de forma breve; para assuntos fora da loja, não responda a pergunta "
+        "e ofereça ajuda com instrumentos, preços, disponibilidade, pedidos e políticas da loja."
     )
+    if evidence is None:
+        context = "Nenhuma evidência das fontes da loja corresponde a esta mensagem."
+    else:
+        context = f"Evidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}"
     payload = json.dumps(
         {
             "model": os.getenv("OPENAI_MODEL", "lfm3-omni-2b"),
             "messages": [
                 {"role": "system", "content": instructions},
-                {
-                    "role": "user",
-                    "content": f"Pergunta do cliente: {question}\n\nEvidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}",
-                },
+                *(history or [])[-HISTORY_MESSAGES:],
+                {"role": "user", "content": f"Pergunta do cliente: {question}\n\n{context}"},
             ],
         }
     ).encode()
@@ -220,14 +227,19 @@ def model_answer(question: str, evidence: Evidence | None) -> str:
         return local_answer(question, evidence)
 
 
-def print_response(question: str, prefix: str = "") -> None:
+def print_response(
+    question: str, prefix: str = "", history: list[dict[str, str]] | None = None
+) -> str:
     if is_order_request(question):
-        print(f"{prefix}{answer_order_status()}")
-        return
+        answer = answer_order_status()
+        print(f"{prefix}{answer}")
+        return answer
     evidence = load_evidence(question)
-    print(f"{prefix}{model_answer(question, evidence)}")
+    answer = model_answer(question, evidence, history)
+    print(f"{prefix}{answer}")
     if evidence:
         print(f"Fonte: {evidence.source}")
+    return answer
 
 
 def preflight() -> None:
@@ -249,24 +261,6 @@ def preflight() -> None:
         raise SystemExit(1)
 
 
-def interactive() -> None:
-    print("Empório da Música. Digite 'sair' para encerrar.")
-    while True:
-        try:
-            question = input("Você: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if question.casefold() in {"sair", "exit", "quit"}:
-            break
-        if not question:
-            continue
-        try:
-            print_response(question, "Loja: ")
-        except (OSError, StopIteration) as error:
-            print(f"Não consegui consultar as fontes: {error}", file=sys.stderr)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -284,6 +278,8 @@ def main() -> None:
         except (OSError, StopIteration) as error:
             parser.error(f"não consegui consultar as fontes: {error}")
     else:
+        from chat_cli import interactive
+
         interactive()
 
 
