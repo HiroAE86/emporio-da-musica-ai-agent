@@ -54,6 +54,12 @@ def deterministic_tool(question: str) -> tuple[str, dict[str, object]] | None:
     return None
 
 
+def clearly_out_of_scope(question: str) -> bool:
+    """Recognize unambiguous general-knowledge questions outside store support."""
+    query = normalize(question)
+    return bool(re.search(r"\b(?:capital|presidente|populacao|clima)\s+(?:da|do|de)\s+", query))
+
+
 def evidence_messages(
     name: str, arguments: dict[str, object], result: str
 ) -> list[dict[str, object]]:

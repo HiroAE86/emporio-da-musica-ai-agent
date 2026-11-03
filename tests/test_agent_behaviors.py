@@ -49,6 +49,15 @@ class AgentBehaviorTests(unittest.TestCase):
         self.addCleanup(server.shutdown)
         return server, captured
 
+    def test_model_prompt_directs_general_knowledge_to_refuse(self) -> None:
+        server, captured = self._tool_server(
+            [{"choices": [{"message": {"content": "Oi! Como posso ajudar com a loja?"}}]}]
+        )
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            run_tool_agent("Oi")
+        system_prompt = captured[0]["messages"][0]["content"]
+        self.assertIn("claramente sobre conhecimento geral", system_prompt)
+
     def test_tool_agent_preloads_catalog_overview_for_small_models(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             csv_path = Path(directory) / "products.csv"

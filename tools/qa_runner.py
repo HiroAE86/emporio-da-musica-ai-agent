@@ -148,6 +148,7 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
             )
             started = time.monotonic()
             with (
+                patch.dict(os.environ, {"ORDER_DATA_DIR": str(ROOT / "examples" / "fixtures")}),
                 patch.object(tool_calling, "_tool_result", capture),
                 patch.object(legacy_model, "answer", capture_legacy),
                 patch(

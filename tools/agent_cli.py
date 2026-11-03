@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from catalog import brl, category_evidence
+from intent_router import clearly_out_of_scope
 from offline_answers import Evidence, carry_over, local_answer
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
@@ -212,6 +213,10 @@ def print_response(
 ) -> tuple[str, Evidence | None]:
     if is_order_request(question):
         answer = answer_order_status()
+        print(f"{prefix}{answer}")
+        return answer, None
+    if clearly_out_of_scope(question):
+        answer = "Não consigo ajudar com perguntas de conhecimento geral. Posso ajudar com instrumentos musicais, preços, disponibilidade, políticas da loja ou status de pedidos."
         print(f"{prefix}{answer}")
         return answer, None
     evidence = carry_over(load_evidence(question), previous, question)

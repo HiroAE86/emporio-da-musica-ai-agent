@@ -60,6 +60,56 @@ class QaRunnerTests(unittest.TestCase):
             server.server_close()
             thread.join()
 
+    def test_model_mode_order_uses_qa_fixture_and_off_topic_skips_model(self) -> None:
+        captured: list[dict] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                captured.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                payload = json.dumps({"choices": [{"message": {"content": "Resposta do modelo."}}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args: object) -> None:
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            scenarios = [
+                {
+                    "id": "order-happy-path-model",
+                    "turns": [{
+                        "user": "Qual o status do pedido?",
+                        "order_inputs": ["TESTE-100", "cliente@example.test", "67999990000"],
+                        "expect": {"must_contain": {"any": ["shipped", "entregue", "separação"]}},
+                    }],
+                },
+                {
+                    "id": "out-of-scope-model",
+                    "turns": [{
+                        "user": "Qual é a capital da França?",
+                        "expect": {"refuses": True},
+                    }],
+                },
+            ]
+            with patch.dict(os.environ, {
+                "OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+                "AGENT_TOOLS": "1",
+            }):
+                records, summary = run(scenarios)
+            self.assertEqual(2, summary["passed_scenarios"])
+            self.assertEqual("Status do pedido: shipped.", records[0]["turns"][0]["answer"].split(" Previsão")[0])
+            self.assertIn("Não consigo ajudar", records[1]["turns"][0]["answer"])
+            self.assertEqual([], captured)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
 
 if __name__ == "__main__":
     unittest.main()

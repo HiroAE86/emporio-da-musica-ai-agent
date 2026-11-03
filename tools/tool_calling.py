@@ -243,7 +243,8 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
         "A evidência da consulta atual prevalece sobre o histórico. Não reutilize categoria ou limite de preço anterior quando a pessoa indicar outra categoria; aplique limites só se forem pedidos na mensagem atual. "
         "Use as ferramentas para consultar fatos; não invente. A lista de fontes e seções disponíveis:\n"
         + (ROOT / "knowledge" / "INDEX.md").read_text(encoding="utf-8")
-        + "\nDados de cliente nunca devem ser solicitados por ferramenta nem repetidos."
+        + "\nDados de cliente nunca devem ser solicitados por ferramenta nem repetidos. "
+        + "Se a mensagem for claramente sobre conhecimento geral sem relação com a loja, recuse e redirecione para catálogo, políticas ou pedidos."
     )
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": instructions},
