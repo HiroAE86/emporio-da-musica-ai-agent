@@ -26,6 +26,8 @@ def carry_over(
     """Reuse the previous turn's evidence for follow-ups like "quanto custa isso?"."""
     if previous is None or previous.kind not in {"product", "category"}:
         return evidence
+    if evidence is not None and evidence.kind == "category":
+        return evidence
     unresolved = evidence is not None and evidence.kind == "product"
     unresolved = unresolved and evidence.text.startswith(
         ("Não encontrei", "Encontrei mais de um produto")
@@ -62,7 +64,7 @@ def local_answer(question: str, evidence: Evidence | None) -> str:
         return f"Oi! {values['Name']} está cadastrado por {formatted} e aparece como {status} no arquivo, com {values['Stock in supplied CSV snapshot']} unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo."
     if evidence.kind == "category":
         formatted = evidence.text
-        if formatted.startswith("Nenhum"):
+        if "Nenhum produto" in formatted:
             return "Oi! " + formatted
         return "Oi! Encontrei estas opções no catálogo:\n" + formatted
     if evidence.kind == "policy" and evidence.text:

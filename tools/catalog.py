@@ -80,11 +80,19 @@ def _line(row: dict[str, str], row_number: int, with_description: bool) -> str:
 
 def _sort_selected(selected: list[tuple[int, dict[str, str]]], query: str, beginner: bool) -> bool:
     only_best = any(
-        term in query for term in ("mais barato", "menor preco", "mais caro", "maior preco")
+        term in query
+        for term in (
+            "mais barato",
+            "mais barata",
+            "menor preco",
+            "mais caro",
+            "mais cara",
+            "maior preco",
+        )
     )
-    if "mais barato" in query or "menor preco" in query:
+    if any(term in query for term in ("mais barato", "mais barata", "menor preco")):
         selected.sort(key=lambda item: _price(item[1]))
-    elif "mais caro" in query or "maior preco" in query:
+    elif any(term in query for term in ("mais caro", "mais cara", "maior preco")):
         selected.sort(key=lambda item: _price(item[1]), reverse=True)
     if beginner:
         selected.sort(
@@ -95,6 +103,30 @@ def _sort_selected(selected: list[tuple[int, dict[str, str]]], query: str, begin
             )
         )
     return only_best
+
+
+def _empty_category(
+    category: str,
+    maximum: float | None,
+    rows: list[dict[str, str]],
+    source: str,
+    label: str,
+    limit_note: str,
+) -> Evidence:
+    limit = f" até {brl(maximum)}" if maximum is not None else ""
+    details = f"Nenhum produto em {LABELS[category]}{limit}."
+    if maximum is not None:
+        above = sorted(
+            (row for row in rows if _in_category(row, category) and _price(row) > maximum),
+            key=_price,
+        )
+        if above:
+            details += f" Mais barato acima do limite: {_line(above[0], 0, False)}."
+    return Evidence(
+        "category",
+        source,
+        f"{label}\n{limit_note}\nCorrespondências dentro do limite: 0\n{details}",
+    )
 
 
 def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Evidence | None:
@@ -138,11 +170,18 @@ def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Ev
         low, high = _amount(between.group(1)), _amount(between.group(2))
         selected = [(number, row) for number, row in selected if low <= _price(row) <= high]
     only_best = _sort_selected(selected, query, beginner)
+    label = f"Categoria: {LABELS[category]}"
+    limit_note = (
+        f"Limite de preço desta consulta: {brl(maximum)}."
+        if maximum is not None
+        else "Limite de preço desta consulta: nenhum; limites anteriores não são herdados."
+    )
     if not selected:
-        limit = f" até {brl(maximum)}" if maximum is not None else ""
-        return Evidence("category", source, f"Nenhum produto em {LABELS[category]}{limit}.")
+        return _empty_category(category, maximum, rows, source, label, limit_note)
     limit = 1 if only_best else LIST_LIMIT
     lines = [_line(row, number, beginner) for number, row in selected[:limit]]
+    if maximum is not None:
+        lines.insert(0, f"Correspondências até {brl(maximum)}: {len(selected)}")
     if len(selected) > limit and not only_best:
         lines.append(f"(mais {len(selected) - LIST_LIMIT} produto(s) nesta categoria)")
-    return Evidence("category", source, "\n".join(lines))
+    return Evidence("category", source, label + "\n" + limit_note + "\n" + "\n".join(lines))

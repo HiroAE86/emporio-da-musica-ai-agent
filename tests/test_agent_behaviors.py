@@ -82,33 +82,27 @@ class AgentBehaviorTests(unittest.TestCase):
                 "b,5400,Fender Stratocaster,6,Guitarra elétrica,2,active\n",
                 encoding="utf-8",
             )
-            responses = [
-                {"choices": [{"message": {"content": "Estas são opções de violão."}}]},
-                {"choices": [{"message": {"content": "Estas são opções de guitarra."}}]},
-                {"choices": [{"message": {"content": "Você tem razão: estas são guitarras."}}]},
-            ]
-            server, captured = self._tool_server(responses)
+            server, captured = self._tool_server(
+                [{"choices": [{"message": {"content": "Resposta incorreta do modelo."}}]}]
+            )
             with (
                 patch("agent_cli.PRODUCTS", csv_path),
                 patch.dict(
                     os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
                 ),
             ):
-                _, previous = print_response("Quais violões vocês têm?")
-                _, previous = print_response("e guitarra?", history=[], previous=previous)
-                _, corrected = print_response(
+                first, previous = print_response("Quais violões vocês têm?")
+                guitar, previous = print_response("e guitarra?", history=[], previous=previous)
+                corrected_answer, corrected = print_response(
                     "Eu disse guitarra, não violão", history=[], previous=previous
                 )
-            for request in captured[1:]:
-                tool_content = request["messages"][-1]["content"]
-                self.assertIn("Fender Stratocaster", tool_content)
-                self.assertNotIn("Yamaha C40", tool_content)
-                self.assertNotIn("1.500", tool_content)
-            system_prompt = captured[1]["messages"][0]["content"]
-            self.assertIn("somente os campos presentes", system_prompt)
-            self.assertIn("Nunca chame uma categoria pelo nome de outra", system_prompt)
-            self.assertIn("limite de preço anterior", system_prompt)
-            self.assertIn("Fender Stratocaster", corrected.text)
+            self.assertIn("Categoria: violões", first)
+            self.assertIn("Categoria: guitarras", guitar)
+            self.assertIn("Fender Stratocaster", guitar)
+            self.assertNotIn("Yamaha C40", guitar)
+            self.assertIn("Categoria: guitarras", corrected.text)
+            self.assertIn("Fender Stratocaster", corrected_answer)
+            self.assertEqual([], captured)
 
     def test_tool_agent_dispatches_across_multiple_rounds(self) -> None:
         first = {
@@ -358,6 +352,76 @@ class AgentBehaviorTests(unittest.TestCase):
             self.assertIn("R$ 599,90", local_answer("", evidence))
             self.assertIn("disponível", local_answer("", evidence))
             self.assertIn("Nenhum produto", local_answer("", empty))
+
+    def test_weak_model_catalog_transcript_is_answered_from_fresh_sorted_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,399,Giannini Start N-14,5,Violão clássico para iniciantes,2,active\n"
+                "b,499,Yamaha C40,5,Violão clássico,1,active\n"
+                "c,599.9,Yamaha C70,5,Violão clássico,3,active\n"
+                "d,5400,Fender Stratocaster,6,Guitarra elétrica,2,active\n"
+                "e,6500,Ibanez Bass,8,Baixo elétrico,1,active\n",
+                encoding="utf-8",
+            )
+            bad = {"choices": [{"message": {"content": "Fender Stratocaster por R$ 20.000."}}]}
+            server, captured = self._tool_server([bad])
+            questions = [
+                "violão para iniciante até 500",
+                "e guitarra?",
+                "E baixo?",
+                "Vocês vendem Baixo?",
+                "qual a guitarra mais barata",
+            ]
+            history: list[dict[str, str]] = []
+            previous = None
+            answers = []
+            try:
+                with patch("agent_cli.PRODUCTS", csv_path), patch.dict(
+                    os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                ):
+                    for question in questions:
+                        answer, previous = print_response(question, history=history, previous=previous)
+                        answers.append(answer)
+                        history.extend(
+                            [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+                        )
+                with patch("agent_cli.PRODUCTS", csv_path):
+                    self.assertIn("Correspondências até R$ 500,00: 2", load_evidence(questions[0]).text)
+                    self.assertIn("Categoria: guitarras", load_evidence(questions[1]).text)
+                    guitar = load_evidence(questions[1]).text
+                    self.assertIn("Limite de preço desta consulta: nenhum", guitar)
+                    self.assertIn("Fender Stratocaster", guitar)
+                    no_guitar_under_limit = load_evidence("guitarra até R$ 500")
+                    self.assertIn("Correspondências dentro do limite: 0", no_guitar_under_limit.text)
+                    self.assertIn("Fender Stratocaster — R$ 5.400,00", no_guitar_under_limit.text)
+                    self.assertIn("Categoria: baixos", load_evidence(questions[2]).text)
+                    self.assertIn("Ibanez Bass", load_evidence(questions[3]).text)
+                self.assertIn("Fender Stratocaster", answers[-1])
+                self.assertNotIn("Ibanez Bass", answers[-1])
+                self.assertEqual(0, len(captured), "catalog answers should bypass weak model output")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_model_product_price_not_in_evidence_falls_back_to_local_answer(self) -> None:
+        server, _captured = self._tool_server(
+            [{"choices": [{"message": {"content": "Custa R$ 99.999,00."}}]}]
+        )
+        evidence = Evidence(
+            "product",
+            "products.csv",
+            "Name: Yamaha C40\nPrice (BRL): 599.9\nStock in supplied CSV snapshot: 2\nStatus: active",
+        )
+        try:
+            with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+                answer = model_answer("Quanto custa Yamaha C40?", evidence)
+            self.assertIn("Yamaha C40", answer)
+            self.assertIn("R$ 599,90", answer)
+            self.assertNotIn("99.999", answer)
+        finally:
+            server.shutdown()
 
     def test_category_without_budget_and_catalog_overview(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
