@@ -2,6 +2,20 @@
 
 A Python CLI prototype for product questions, store policies, order status, and unrelated requests. Customer-facing replies use Brazilian Portuguese. Product and regret-return answers have local templates, so the CLI works without a model service.
 
+## Quick start
+
+With `make` and Python 3.10+ installed:
+
+```sh
+make setup      # create .venv and install
+make test       # offline test suite
+make demo       # run the case example questions
+make chat       # interactive conversation
+make help       # list every command
+```
+
+`make ask Q="Quanto custa o Yamaha C40?"` asks a single question, and `make order` runs the order lookup with fixture data. If a `.env` file exists, the Makefile loads its `OPENAI_*` settings. The manual steps follow below.
+
 ## Setup
 
 Requires Python 3.10 or newer. From the repository root:
