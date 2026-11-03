@@ -49,7 +49,7 @@ make ask Q="Como funciona a garantia?"
 
 **Design pitch:** the default lets the model decide which catalog or policy lookup it needs, while Python validates each tool request and checks the resulting answer against source data. The verified order flow stays local, so names, emails, phone numbers, and order records never reach the model. If a small model skips a tool or returns an answer that fails grounding or category checks, one evidence-based retry runs before the local answer takes over.
 
-QA results:
+Historical QA results (before the current grounding fix):
 
 | Model | Result | Answer path |
 |---|---:|---|
@@ -63,7 +63,7 @@ The 2026-11-03 `lfm3-omni-2b` run used pre-retrieval. Inference ran locally and 
 - **Agent shape:** a short OpenAI Chat Completions tool loop, limited to four tool rounds. It uses the standard library `urllib`, with no agent framework, embeddings, or vector database. The model chooses a local function; Python reads the source and returns its result for the model to explain.
 - **Knowledge wiki:** `make policies` uses `pypdf` to reproducibly extract the supplied policy PDF into numbered Markdown sections at `knowledge/policies/store.md`. `knowledge/INDEX.md` lists the available policy topics, catalog categories, and order source; it is included in the system prompt. The PDF remains the source of truth.
 - **Tools:** `search_products(query)` and `list_category(category, max_price?, beginner?)` read the operational products CSV; `read_policy(section)` reads one Markdown section; `check_order_status()` starts the existing local verification flow. Tool JSON is validated before source access. Unknown tools and malformed arguments produce safe tool results.
-- **Catalog replies:** Python filters and sorts category and budget tool results from the CSV. The model explains those results; local rendering takes over when its category or price checks fail. Each lookup states its category, match count, and price-limit rule. A new category starts a fresh lookup; price limits are not inherited from the previous turn.
+- **Catalog replies:** Python filters and sorts category and budget tool results from the CSV. Displayed product-price pairs must match the current tool results and locally retrieved rows after budget filtering; prices from other catalog rows do not qualify. The model explains those results; local rendering takes over when its category or price checks fail. Each lookup states its category, match count, and price-limit rule. A new category starts a fresh lookup; price limits are not inherited from the previous turn.
 - **Privacy:** order number, email, and phone are collected and checked locally. The model sees only verified status and estimated delivery. Email addresses and phone-like values are redacted from user messages and chat history before model requests. Customer and order CSV rows are never sent to the model.
 - **Fallback and UI:** no endpoint means offline keyword routing and local templates. Unsupported tool endpoints use the evidence-in-prompt model path, then local templates if the answer fails validation. The interface is a one-shot or interactive CLI. History stays in memory and is bounded to six recent messages.
 - **Source handling:** product facts come from the products CSV; policy facts come from the PDF-derived Markdown. Order and stock data are static snapshots. The supplied case brief leaves the framework, provider, model, UI, and persistence choices open; this prototype keeps the implementation small and documents those choices here.
@@ -72,12 +72,12 @@ The 2026-11-03 `lfm3-omni-2b` run used pre-retrieval. Inference ran locally and 
 
 ```sh
 python -m unittest discover -s tests -v
-PATH=/tmp/emporio-venv/bin:$PATH sh scripts/check_python.sh
+make lint
 ```
 
 ## QA
 
-Run the conversational QA scenarios against the configured local model, or offline when `OPENAI_BASE_URL` is unset:
+Run the conversational QA scenarios against the configured local model, or offline with `make qa OPENAI_BASE_URL=` (this also overrides `.env`):
 
 ```sh
 make qa
@@ -87,14 +87,18 @@ QA_OUT=/tmp/emporio-qa make qa
 
 Each run starts fresh conversations, preserves history between turns, and writes a Markdown transcript plus JSONL records under `qa/results/`. The command exits nonzero when a check fails. Reports are local and ignored by Git.
 
-The offline tests use synthetic data and a local fake OpenAI-compatible server. They cover tool dispatch, multiple rounds, bad and unknown calls, unsupported-tool fallback, PII redaction, legacy behavior, and policy facts checked against the PDF. Five offline conversations are in [examples/conversations.md](examples/conversations.md).
+The offline tests use synthetic data and a local fake OpenAI-compatible server. They cover tool dispatch, multiple rounds, bad and unknown calls, unsupported-tool fallback, PII redaction, legacy behavior, and policy facts checked against the PDF. Exactly five canonical conversations, freshly captured offline with no model, are in [examples/conversations.md](examples/conversations.md).
 
 ## Limitations
 
-Product matching and category inference are lexical; categories are inferred from names and descriptions because the current product lookup does not depend on category labels. There is no live inventory, promotion feed, or order integration. The price check covers currency amounts in product answers; provider-specific tool support can vary. Email and phone checks are a demo safeguard, not production identity verification. Policy text is faithfully extracted but may need manual cleanup if the PDF layout changes; the PDF comparison test guards selected facts, not every sentence.
+Product matching and category inference are lexical; categories are inferred from names and descriptions because the current product lookup does not depend on category labels. There is no live inventory, promotion feed, or order integration. Category and catalog price checks use the current filtered evidence and product-price pairs. Unrecognized price formats or phrasing may trigger the evidence retry or local answer; these checks do not validate every factual claim. Provider-specific tool support can vary. Offline mode defers freight and warranty questions to the source or store team rather than summarizing those policies. Email and phone checks are a demo safeguard, not production identity verification. Policy text is faithfully extracted but may need manual cleanup if the PDF layout changes; the PDF comparison test guards selected facts, not every sentence.
+
+## With more time
+
+Strengthen grounding beyond product-price pairs and expand the evaluation set with adversarial and multi-turn cases. Replace demo verification with real authentication, integrate live orders, stock, and promotions, and add durable conversation history with retention controls.
 
 ## AI tools and development workflow
 
-Codex CLI on a VPS implemented the project with the P-Stack skills: poteto-mode, interrogate/adversarial review, blast-radius, applicable `principle-*` skills, and unslop. Work proceeded in scoped rounds. A human set direction and reviewed each round; each round had a focused prompt, and tests, Ruff, and the 300-line file limit had to pass before its commit. Adversarial edge-case probing exposed phrasing bugs. Testing the real `lfm3-omni-2b` model through LM Studio exposed invented prices, category mix-ups, and budget carry-over; those failures led to deterministic pre-retrieval, code-side budget filtering, and a price grounding check. The QA harness gave the final 15/15 scenario and 45/45 check result.
+Codex CLI on a VPS implemented the project with the P-Stack skills: poteto-mode, interrogate/adversarial review, blast-radius, applicable `principle-*` skills, and unslop. Work proceeded in scoped rounds. A human set direction and reviewed each round; each round had a focused prompt, and tests, Ruff, and the 300-line file limit had to pass before its commit. Adversarial edge-case probing exposed phrasing bugs. Testing the real `lfm3-omni-2b` model through LM Studio exposed invented prices, category mix-ups, and budget carry-over; those failures led to deterministic pre-retrieval, code-side budget filtering, and a price grounding check. The historical LM Studio pre-retrieval QA run passed 15/15 scenarios and 45/45 checks.
 
 AI proposed and implemented changes; a human chose scope and reviewed them. Source-derived behavior was checked against the supplied CSVs and policy PDF, and the test suite and QA checks were run locally. The model did not determine the project requirements or the acceptance result.

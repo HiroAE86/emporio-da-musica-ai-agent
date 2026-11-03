@@ -494,7 +494,7 @@ class AgentBehaviorTests(unittest.TestCase):
                     self.assertIn(
                         "Correspondências dentro do limite: 0", no_guitar_under_limit.text
                     )
-                    self.assertIn("Fender Stratocaster — R$ 5.400,00", no_guitar_under_limit.text)
+                    self.assertNotIn("Fender Stratocaster", no_guitar_under_limit.text)
                     self.assertIn("Categoria: baixos", load_evidence(questions[2]).text)
                     self.assertIn("Ibanez Bass", load_evidence(questions[3]).text)
                 self.assertIn("Fender Stratocaster", answers[-1])
@@ -503,6 +503,63 @@ class AgentBehaviorTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
+
+    def test_category_price_pairs_use_current_filtered_tool_rows(self) -> None:
+        cases = [
+            ("Quais violões até R$ 500?", 500, "Takamine GD20", "599,90"),
+            ("Quais violões até R$ 500?", 500, "Tagima Memphis", "459,90"),
+            ("Quais violões até R$ 1000?", 500, "Yamaha C40", "599,90"),
+            ("Quais violões até R$ 500?", 1000, "Yamaha C40", "599,90"),
+        ]
+        for question, tool_limit, name, price in cases:
+            with self.subTest(question=question, tool_limit=tool_limit, name=name):
+                call = {
+                    "choices": [
+                        {
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "category",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "list_category",
+                                            "arguments": json.dumps(
+                                                {"category": "violao", "max_price": tool_limit}
+                                            ),
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+                bad = {"choices": [{"message": {"content": f"Violões: {name} — R$ {price}"}}]}
+                server, captured = self._tool_server([call, bad])
+                metadata = {}
+                with patch.dict(
+                    os.environ,
+                    {
+                        "OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+                        "AGENT_TOOLS": "1",
+                        "AGENT_TOOL_STRATEGY": "auto",
+                    },
+                ):
+                    answer = model_answer(question, load_evidence(question), metadata=metadata)
+                self.assertEqual(
+                    "preretrieve" if tool_limit == 500 and "1000" in question else "local",
+                    metadata["path"],
+                )
+                self.assertEqual(3, len(captured), "tool, invalid answer, evidence retry")
+                if metadata["path"] == "local":
+                    self.assertIn("Tagima Memphis AC-39 Nylon Natural — R$ 429,90", answer)
+                    self.assertNotIn(f"{name} — R$ {price}", answer)
+
+    def test_payment_installment_tiers(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": ""}):
+            question = "No cartão posso parcelar R$ 150 em 3 vezes sem juros?"
+            answer = model_answer(question, load_evidence(question))
+        for term in ("até 3x", "R$ 50", "4x a 6x", "R$ 80", "7x a 12x", "R$ 100", "R$ 2.000"):
+            self.assertIn(term, answer)
 
     def test_model_product_price_not_in_evidence_falls_back_to_local_answer(self) -> None:
         server, _captured = self._tool_server(

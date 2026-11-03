@@ -111,7 +111,7 @@ def policy_answer(question: str, source_text: str) -> str:
     return {
         "address": "Oi! A loja fica na Rua 14 de Maio, 3200, Centro, Campo Grande/MS, CEP 79202-333.",
         "hours": "Oi! O atendimento presencial e via WhatsApp funciona de segunda a sexta, das 9h às 18h, e aos sábados, das 9h às 13h. A loja fecha aos domingos e feriados.",
-        "payment": "Oi! A loja aceita PIX à vista com 5% de desconto, cartões de débito e crédito (crédito em até 12x sem juros, parcela mínima de R$ 100) e boleto à vista, com compensação em até 3 dias úteis.",
+        "payment": "Oi! A loja aceita PIX à vista com 5% de desconto, cartões de débito e crédito (crédito sem juros: até 3x com parcela mínima de R$ 50,00; de 4x a 6x com parcela mínima de R$ 80,00; de 7x a 12x com parcela mínima de R$ 100,00) e boleto à vista, com compensação em até 3 dias úteis. A combinação de formas de pagamento é permitida para compras acima de R$ 2.000,00.",
         "exchange": "Oi! Para defeito de fabricação, a troca pode ser solicitada em até 30 dias corridos após a compra. Trocas por preferência podem ser feitas em até 7 dias, conforme disponibilidade, com o produto em perfeito estado e na embalagem original. Há itens não elegíveis; consulte a equipe para confirmar seu caso.",
     }[key]
 

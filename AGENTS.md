@@ -1,31 +1,32 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Structure and sources
 
-`Desafio Técnico AI Engineer 2026/data/` holds the operational CSV files and store policy PDF. `docs/` contains project/domain documentation and the generated `knowledge-index.json`. `tools/project_knowledge.py` builds and queries the local project knowledge index; `tools/agent_cli.py` runs the customer-service CLI. `scripts/` contains source-document utilities and the Python quality checker. The project has no configured test suite.
+`tools/agent_cli.py` runs the one-shot CLI; `tools/chat_cli.py` manages interactive history. Catalog retrieval lives in `tools/catalog.py`; model routing, tool calls, grounding, and offline answers have separate modules under `tools/`. `tools/order_status.py` verifies orders locally. `tools/qa_runner.py` executes `qa/scenarios.json` and writes Markdown/JSONL reports.
 
-## Build, Test, and Development Commands
+`Desafio Técnico AI Engineer 2026/data/` contains the supplied product CSV and policy PDF. `knowledge/policies/store.md` is generated from the PDF by `tools/policy_markdown.py`; `knowledge/INDEX.md` describes the available sources. Preserve the distinction between operational CSV facts and policy rules. Regenerate derived policy text rather than editing it by hand. `examples/fixtures/` contains fictional customer/order data; `examples/conversations.md` holds exactly five canonical CLI transcripts. `docs/` records requirements and design decisions.
 
-Run commands from the repository root:
+## Development and verification
 
-- `python3 tools/project_knowledge.py build` rebuilds the index from docs, CSVs, and policy PDF. It requires `pdftotext` on `PATH`.
-- `python3 tools/project_knowledge.py query "Takamine GD20 price"` searches the index and prints evidence with source paths and row/chunk references. It builds the index if absent.
-- `scripts/extract_requirements_source.sh` prints the technical challenge PDF as text; it also requires `pdftotext`.
-- `python3 tools/agent_cli.py "Quanto custa o Takamine GD20?"` answers a customer message. Run it without a message for interactive mode.
-- `sh scripts/check_python.sh` checks Python lint, formatting, function complexity, and file length under `tools/` and `scripts/`. It needs Ruff on `PATH` or `uvx` installed.
+Run from the repository root. Python 3.10+ and `make` are required.
 
-## Coding Style & Naming Conventions
+- `make setup` creates `.venv` and installs the project with `pypdf`.
+- `make policies` rebuilds the policy Markdown using `pypdf`; it needs no `pdftotext`.
+- `make test` runs `python -m unittest discover -s tests -v`.
+- `make lint` runs Ruff lint, format, complexity, and file-length checks through `scripts/check_python.sh`.
+- `make qa` runs conversational scenarios against the configured endpoint. Use `make qa OPENAI_BASE_URL=` to force offline mode even when `.env` is present; set `QA_OUT=/tmp/emporio-qa` to keep reports outside the repository.
+- `make preflight`, `make demo`, `make chat`, `make ask Q="Quanto custa o Yamaha C40?"`, and `make order` exercise the CLI.
+- `make help` lists targets. Override `VENV` to use an existing environment.
+- `scripts/extract_requirements_source.sh` prints the challenge PDF and requires `pdftotext`.
 
-Use Python 3 standard-library features where practical. Indent Python with four spaces, use `snake_case` for functions and variables, and keep scripts directly runnable with `python3`. Use UTF-8 for Markdown and source data. Preserve the distinction between operational CSV facts and policy PDF rules; document sources for derived knowledge. Keep generated indexes reproducible from their source files rather than editing them by hand. Run `sh scripts/check_python.sh` before handing off Python changes. Keep Python files under 300 lines and functions at or below cyclomatic complexity 10; adjust the file limit with `PYTHON_MAX_FILE_LINES` only when needed. These limits flag review risks but do not prove that a file has one clear responsibility. Split a file when unrelated changes repeatedly touch it or it owns distinct data sources and workflows.
+Make loads optional `.env` settings; direct Python commands do not. Tests under `tests/` use unittest, synthetic data, fake HTTP model servers, and policy/PDF comparisons. For Python changes, run the unittests and `make lint`; for answer behavior changes, also run offline QA and configured-model QA when available. Keep model and offline results labeled accurately.
 
-## Testing Guidelines
+## Code and delivery
 
-There is no test framework or coverage requirement configured. For changes to the knowledge tool, rebuild the index and run representative queries for both CSV-backed facts and policy text. Add automated tests under `tests/` when the application or more complex logic is introduced; use descriptive names such as `test_policy_lookup.py`.
+Use Python standard-library features where practical, four-space indentation, `snake_case`, and UTF-8. Keep scripts runnable with `python3`. Python files under `tools/` and `scripts/` must stay under 300 lines, with function cyclomatic complexity at most 10. Split distinct responsibilities rather than raising limits without cause.
 
-## Commit & Pull Request Guidelines
+Use concise imperative commit subjects when commits are requested. PRs should state the user-visible change, validation commands/results, and any source-data or generated-policy changes. Do not change source data to make checks pass.
 
-No project commit history is available to establish a commit convention. Use concise imperative commit subjects (for example, `Add source-cited knowledge lookup`). Pull requests should describe the user-visible change, list validation commands and results, and note any changes to source data or generated indexes. Include screenshots only for UI changes.
+## Privacy and credentials
 
-## Security & Data Handling
-
-Customer CSVs contain personal information. Do not include customer contact details in examples, logs, or answers unless required and authorized by the application. Before exposing order details, implement requester verification. Never commit API keys or other credentials.
+Real customer/order CSVs contain personal information and stay local. Before exposing order details, verify the requester; use only fictional fixtures in examples and tests. Do not include real customer contact details in logs or replies. Never print `.env` contents or commit credentials.

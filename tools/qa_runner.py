@@ -15,17 +15,11 @@ from unittest.mock import patch
 
 import tool_calling
 from agent_cli import PRODUCTS, print_response
+from price_grounding import prices_grounded
 from project_paths import ROOT
 from qa_report import report
 
 QA = ROOT / "qa"
-
-
-def product_prices() -> set[int]:
-    with PRODUCTS.open(encoding="utf-8-sig", newline="") as stream:
-        return {
-            round(float(row["price_brl"].replace(",", ".")) * 100) for row in csv.DictReader(stream)
-        }
 
 
 def customer_pii() -> set[str]:
@@ -45,9 +39,7 @@ def amounts(text: str) -> list[tuple[str, int]]:
     return found
 
 
-def check_one(
-    key: str, terms: object, answer: str, evidence: str, prices: set[int], pii: set[str]
-) -> list[dict]:
+def check_one(key: str, terms: object, answer: str, evidence: str, pii: set[str]) -> list[dict]:
     normalized, output = answer.casefold(), []
 
     def add(name: str, passed: bool, reason: str) -> None:
@@ -75,9 +67,8 @@ def check_one(
         over = [value for value, cents in amounts(answer) if cents > round(float(terms) * 100)]
         add(key, not over, f"amounts above {terms}: {over}")
     elif key == "prices_grounded":
-        grounded = prices | {cents for _, cents in amounts(evidence)}
-        unknown = [value for value, cents in amounts(answer) if cents not in grounded]
-        add(key, not unknown, f"ungrounded amounts: {unknown}")
+        passed = prices_grounded(answer, evidence)
+        add(key, passed, "product-price pairs and amounts checked against current evidence")
     elif key == "no_pii":
         leaks = [value for value in pii if len(value) > 4 and value.casefold() in normalized]
         add(key, not leaks, f"customer values found: {leaks}")
@@ -122,18 +113,16 @@ def _overview_counts_match(answer: str, evidence: str) -> bool:
     return bool(expected)
 
 
-def checks(
-    answer: str, expected: dict, prices: set[int], pii: set[str], evidence: str = ""
-) -> list[dict]:
+def checks(answer: str, expected: dict, pii: set[str], evidence: str = "") -> list[dict]:
     return [
         check
         for key, terms in expected.items()
-        for check in check_one(key, terms, answer, evidence, prices, pii)
+        for check in check_one(key, terms, answer, evidence, pii)
     ]
 
 
 def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
-    prices, pii = product_prices(), customer_pii()
+    pii = customer_pii()
     records = []
     for scenario in scenarios:
         history: list[dict[str, str]] = []
@@ -194,7 +183,10 @@ def run(scenarios: list[dict]) -> tuple[list[dict], dict]:
             history = history[-6:]
             previous = evidence
             result = checks(
-                answer, turn.get("expect", {}), prices, pii, evidence.text if evidence else ""
+                answer,
+                turn.get("expect", {}),
+                pii,
+                metadata.get("grounding_evidence", evidence.text if evidence else ""),
             )
             expected_tools = turn.get("expect", {}).get("tools_called")
             if expected_tools is not None and mode == "tools":

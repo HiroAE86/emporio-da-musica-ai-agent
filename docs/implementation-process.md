@@ -2,7 +2,7 @@
 
 ## Status
 
-Requirements discovery, scope selection, CLI implementation, and four conversation examples are complete. The CLI supports product, policy, order-status, and out-of-scope messages. GitHub publication and email submission remain.
+Requirements discovery, scope selection, CLI implementation, and five canonical conversation examples are complete. The CLI supports product, policy, order-status, and out-of-scope messages. The repository is public at https://github.com/HiroAE86/emporio-da-musica-ai-agent. Email submission remains unverified.
 
 ## 1. Read the challenge brief
 
@@ -33,8 +33,8 @@ The CLI is sufficient because the brief permits it and the focus is on the agent
 
 1. Reviewed the brief, operational CSV schemas, and policy PDF.
 2. Added a reproducible PDF-to-Markdown policy wiki and an OpenAI-compatible tool loop for product, category, policy, and locally verified order lookup.
-3. Added a local order-status check using an order ID and registered email, with fictional public fixtures.
-4. Saved four conversations and checked their facts against the product CSV, fixture CSVs, and policy section 4.1.
+3. Added a local order-status check using an order ID, registered email, and registered phone, with fictional public fixtures.
+4. Captured five canonical conversations by running the CLI offline, including a category switch, policy application, and complete fictional order verification. Additional model dialogues remain in the linked QA report.
 5. Recorded the design reasons in `docs/architecture.md` and summarized them in the README.
 6. Kept offline behavior as the default and added fake-server tests for tool fallback and privacy boundaries.
 
@@ -46,8 +46,10 @@ The CLI is sufficient because the brief permits it and the focus is on the agent
 - Unknown or unsupported facts are identified as unknown rather than guessed.
 - Customer contact data is not included in answers; order status is returned only after local verification.
 - The README and five varied offline conversation examples are present and reproducible.
-- The public repository is submitted by the deadline.
+- The public repository link must be submitted by the deadline; no sent-email receipt is recorded here.
 
 ## 6. Current gaps
 
 The CLI supports product and policy answers, local order-status verification, and out-of-scope redirection. The public order-status example uses fictional data. Real customer and order CSVs remain local and are excluded from Git.
+
+The requirements fix validates category product-price pairs against current filtered evidence, including actual tool results, and corrects the offline installment tiers. Fake-server regressions cover swapped prices, budget violations, and narrower tool results. Current verification passes 41 unittests, lint, and offline QA (15/15 scenarios, 46/46 checks). Historical model QA reports describe their original revisions; the requirements-fix report records the new configured-model runs, including an intermittent return-policy wording failure. Offline freight and warranty answers still defer to the source or store team.

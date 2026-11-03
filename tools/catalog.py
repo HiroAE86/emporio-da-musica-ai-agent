@@ -108,20 +108,12 @@ def _sort_selected(selected: list[tuple[int, dict[str, str]]], query: str, begin
 def _empty_category(
     category: str,
     maximum: float | None,
-    rows: list[dict[str, str]],
     source: str,
     label: str,
     limit_note: str,
 ) -> Evidence:
     limit = f" até {brl(maximum)}" if maximum is not None else ""
     details = f"Nenhum produto em {LABELS[category]}{limit}."
-    if maximum is not None:
-        above = sorted(
-            (row for row in rows if _in_category(row, category) and _price(row) > maximum),
-            key=_price,
-        )
-        if above:
-            details += f" Mais barato acima do limite: {_line(above[0], 0, False)}."
     return Evidence(
         "category",
         source,
@@ -131,8 +123,14 @@ def _empty_category(
 
 def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Evidence | None:
     """Return a category list, a catalog overview, or None when neither applies."""
+    budget = re.search(
+        r"\b(?:ate|abaixo de|no maximo)\s+r?\$?\s*(mil(?:\s+reais)?|[\d.,]+k?|\d+(?:[.,]\d+)?\s*mil(?:\s+reais)?)",
+        query,
+    )
+    maximum = _amount(budget.group(1)) if budget else None
     if any(phrase in query for phrase in OVERVIEW_PHRASES):
-        counts = []
+        rows = [row for row in rows if maximum is None or _price(row) <= maximum]
+        counts = [f"Limite de preço desta consulta: {brl(maximum)}."] if maximum is not None else []
         for term in CATEGORY_TERMS:
             found = [row for row in rows if _in_category(row, term)]
             if found:
@@ -155,11 +153,6 @@ def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Ev
     if category is None:
         return None
     between = re.search(r"\bentre\s+(.+?)\s+e\s+(.+?)(?:\s+reais)?(?:\b|$)", query)
-    budget = re.search(
-        r"\b(?:ate|abaixo de|no maximo)\s+r?\$?\s*(mil(?:\s+reais)?|[\d.,]+k?|\d+(?:[.,]\d+)?\s*mil(?:\s+reais)?)",
-        query,
-    )
-    maximum = _amount(budget.group(1)) if budget else None
     beginner = any(term in query for term in BEGINNER_TERMS)
     selected = [
         (number, row)
@@ -177,7 +170,7 @@ def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Ev
         else "Limite de preço desta consulta: nenhum; limites anteriores não são herdados."
     )
     if not selected:
-        return _empty_category(category, maximum, rows, source, label, limit_note)
+        return _empty_category(category, maximum, source, label, limit_note)
     limit = 1 if only_best else LIST_LIMIT
     lines = [_line(row, number, beginner) for number, row in selected[:limit]]
     if maximum is not None:

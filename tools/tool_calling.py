@@ -160,7 +160,8 @@ def _list_category(args: dict[str, Any]) -> str:
 
     with PRODUCTS.open(encoding="utf-8-sig", newline="") as file:
         rows = list(csv.DictReader(file))
-    query = category + (f" ate {maximum}" if maximum is not None else "")
+    limit = str(maximum).replace(".", ",")
+    query = category + (f" ate {limit}" if maximum is not None else "")
     query += " iniciante" if beginner else ""
     evidence = category_evidence(normalize(query), rows, source_name(PRODUCTS))
     return evidence.text if evidence else "No products found in that category."
@@ -226,7 +227,7 @@ def run_tool_agent(
     question: str,
     history: list[dict[str, str]] | None = None,
     call_log: list[dict[str, Any]] | None = None,
-    evidence: str = "",
+    results: list[str] | None = None,
 ) -> str | None:
     """Return model content, or None when tool support is unavailable/invalid."""
     base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
@@ -249,8 +250,6 @@ def run_tool_agent(
         ],
         {"role": "user", "content": model_safe(question)},
     ]
-    if evidence:
-        messages.append({"role": "system", "content": "Evidência local:\n" + evidence})
     for round_number in range(MAX_TOOL_ROUNDS + 1):
         payload = json.dumps(
             {
@@ -293,7 +292,8 @@ def run_tool_agent(
                 except (ValueError, TypeError, json.JSONDecodeError):
                     args = {}
                 call_log.append({"name": function.get("name", "unknown"), "arguments": args})
-            messages.append(
-                {"role": "tool", "tool_call_id": call.get("id", ""), "content": _tool_result(call)}
-            )
+            result = _tool_result(call)
+            if results is not None:
+                results.append(result)
+            messages.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": result})
     return None

@@ -7,8 +7,8 @@ import re
 import sys
 from urllib.error import HTTPError, URLError
 
-from catalog import brl
 from offline_answers import Evidence, local_answer, normalize
+from price_grounding import prices_grounded
 
 
 def model_answer(
@@ -57,7 +57,8 @@ def _tools_answer(
 
     try:
         calls: list[dict] = []
-        answer = run_tool_agent(question, history, calls)
+        results: list[str] = []
+        answer = run_tool_agent(question, history, calls, results=results)
         metadata["tool_calls"] = calls
         from intent_router import deterministic_tool
 
@@ -67,8 +68,13 @@ def _tools_answer(
             answer
             and (called_tool or not required_tool)
             and _answer_is_valid(question, answer, evidence)
+            and (
+                not any(call["name"] in {"list_category", "list_catalog"} for call in calls)
+                or prices_grounded(answer, "\n".join(results))
+            )
         ):
             metadata["path"] = "tools"
+            metadata["grounding_evidence"] = "\n".join(results)
             return answer
         if strategy != "tools":
             return _preretrieve_retry(question, evidence, history, metadata)
@@ -122,30 +128,6 @@ def _answer_is_valid(question: str, answer_text: str, evidence: Evidence | None)
 def _check_model_prices(answer_text: str, evidence: Evidence | None) -> str:
     if evidence is None or evidence.kind not in {"product", "category"}:
         return answer_text
-    normalized_answer = answer_text.translate(
-        str.maketrans({"\u00a0": " ", "\u2007": " ", "\u202f": " "})
+    return (
+        answer_text if prices_grounded(answer_text, evidence.text) else local_answer("", evidence)
     )
-    amounts = re.findall(r"R\$\s*([\d.]+(?:,\d{1,2})?)", normalized_answer)
-    if not amounts:
-        return answer_text
-    if evidence.kind == "category":
-        import csv
-
-        from agent_cli import PRODUCTS
-
-        with PRODUCTS.open(encoding="utf-8-sig", newline="") as stream:
-            valid_prices = {
-                brl(float(row["price_brl"].replace(",", "."))) for row in csv.DictReader(stream)
-            }
-        return (
-            answer_text
-            if all("R$ " + amount in valid_prices for amount in amounts)
-            else local_answer("", evidence)
-        )
-    source_price = re.search(r"^Price \(BRL\): ([\d.,]+)$", evidence.text, re.MULTILINE)
-    if source_price is None:
-        return local_answer("", evidence)
-    expected = brl(float(source_price.group(1).replace(",", ".")))
-    if any("R$ " + amount != expected for amount in amounts):
-        return local_answer("", evidence)
-    return answer_text

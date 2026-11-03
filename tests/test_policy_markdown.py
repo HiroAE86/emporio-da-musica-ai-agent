@@ -22,6 +22,11 @@ class PolicyMarkdownTests(unittest.TestCase):
         wiki = normalized((ROOT / "knowledge/policies/store.md").read_text(encoding="utf-8"))
         for fact in (
             "09:00 às 18:00",
+            "Parcelamento em até 3x",
+            "exceto abaixo de R$ 50,00",
+            "Parcelamento de 4x a 6x: sem juros, parcela mínima de R$ 80,00",
+            "Parcelamento de 7x a 12x: sem juros, parcela mínima de R$ 100,00",
+            "para compras acima de R$ 2.000,00",
             "5% de desconto sobre o preço de tabela",
             "7 (sete) dias corridos após o recebimento",
             "reembolso será realizado na mesma forma de pagamento original em até 10 dias úteis",
