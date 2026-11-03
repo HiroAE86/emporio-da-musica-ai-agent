@@ -20,9 +20,267 @@ from unittest.mock import patch
 from agent_cli import Evidence, load_evidence, local_answer, model_answer  # noqa: E402
 from offline_answers import carry_over  # noqa: E402
 from order_status import GENERIC_MISMATCH, lookup_order_status  # noqa: E402
+from tool_calling import run_tool_agent  # noqa: E402
 
 
 class AgentBehaviorTests(unittest.TestCase):
+    def _tool_server(self, responses: list[dict[str, object]]):
+        captured: list[dict[str, object]] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                captured.append(body)
+                response = responses[min(len(captured) - 1, len(responses) - 1)]
+                encoded = json.dumps(response).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+
+            def log_message(self, *_args: object) -> None:
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(thread.join)
+        self.addCleanup(server.shutdown)
+        return server, captured
+
+    def test_tool_agent_dispatches_across_multiple_rounds(self) -> None:
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_products",
+                                    "arguments": '{"query":"Takamine GD20"}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        second = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "c2",
+                                "type": "function",
+                                "function": {
+                                    "name": "list_category",
+                                    "arguments": '{"category":"violao","max_price":1000}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        third = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "c3",
+                                "type": "function",
+                                "function": {
+                                    "name": "read_policy",
+                                    "arguments": '{"section":"hours"}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        final = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "O atendimento funciona de segunda a sexta, das 9h às 18h."
+                    }
+                }
+            ]
+        }
+        server, captured = self._tool_server([first, second, third, final])
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            answer = run_tool_agent("Qual o preço e horário? ")
+        self.assertIn("O atendimento funciona", str(answer))
+        self.assertEqual(4, len(captured))
+        self.assertIn("Takamine GD20", str(captured[1]["messages"]))
+        self.assertIn("Yamaha C40", str(captured[2]["messages"]))
+        self.assertIn("## 2. Horário de Funcionamento", str(captured[3]["messages"]))
+
+    def test_bad_and_unknown_tool_arguments_are_returned_safely(self) -> None:
+        def tool_call(name: str, args: str) -> dict[str, object]:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "c1",
+                                    "type": "function",
+                                    "function": {"name": name, "arguments": args},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+        final = {"choices": [{"message": {"content": "Não consegui consultar essa informação."}}]}
+        for call, expected in (
+            (tool_call("list_category", "[]"), "Invalid arguments"),
+            (tool_call("no_such_tool", "{}"), "Unknown tool"),
+            (tool_call("list_category", "not-json"), "Invalid arguments"),
+        ):
+            with self.subTest(expected=expected):
+                server, captured = self._tool_server([call, final])
+                with patch.dict(
+                    os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                ):
+                    run_tool_agent("Quero consultar")
+                self.assertIn(expected, str(captured[1]["messages"]))
+                server.shutdown()
+                server.server_close()
+
+    def test_tool_payload_redacts_customer_contact_data(self) -> None:
+        final = {
+            "choices": [{"message": {"content": "Posso ajudar com o pedido após a verificação."}}]
+        }
+        server, captured = self._tool_server([final])
+        history = [{"role": "user", "content": "meu email ana@example.test e telefone 67999990000"}]
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            run_tool_agent(
+                "Pedido TESTE-100, email ana@example.test, telefone 67999990000", history
+            )
+        request_text = json.dumps(captured[0])
+        self.assertNotIn("ana@example.test", request_text)
+        self.assertNotIn("67999990000", request_text)
+        self.assertNotIn("TESTE-100", request_text)
+        self.assertIn("[redacted email]", request_text)
+
+    def test_order_tool_keeps_verification_data_local(self) -> None:
+        call = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "order-check",
+                                "type": "function",
+                                "function": {"name": "check_order_status", "arguments": "{}"},
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"content": "Seu pedido foi enviado."}}]}
+        server, captured = self._tool_server([call, final])
+        env = {
+            "OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+            "ORDER_DATA_DIR": str(ROOT / "examples/fixtures"),
+        }
+        with (
+            patch.dict(os.environ, env),
+            patch("builtins.input", return_value="TESTE-100"),
+            patch(
+                "order_status.getpass.getpass", side_effect=["cliente@example.test", "67999990000"]
+            ),
+        ):
+            run_tool_agent("Consulte meu pedido")
+        tool_content = str(captured[1]["messages"][-1]["content"])
+        self.assertEqual(
+            "Status do pedido: shipped. Previsão de entrega: 2026-11-05.", tool_content
+        )
+        request_text = json.dumps(captured[1])
+        self.assertNotIn("cliente@example.test", request_text)
+        self.assertNotIn("67999990000", request_text)
+        self.assertNotIn("TESTE-100", request_text)
+
+    def test_tool_unsupported_endpoint_uses_legacy_evidence_path(self) -> None:
+        responses = [
+            {"choices": [{"message": {"content": "Resposta via caminho antigo."}}]},
+            {"choices": [{"message": {"content": "Resposta via caminho antigo."}}]},
+        ]
+        server, captured = self._tool_server(responses)
+
+        endpoint_calls = [0]
+
+        class UnsupportedHandler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                endpoint_calls[0] += 1
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                captured.append(body)
+                if endpoint_calls[0] == 1:
+                    self.send_error(400, "tools unsupported")
+                    return
+                encoded = json.dumps(responses[1]).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+
+            def log_message(self, *_args: object) -> None:
+                return
+
+        server.shutdown()
+        server.server_close()
+        server = HTTPServer(("127.0.0.1", 0), UnsupportedHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch.dict(
+                os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+            ):
+                answer = model_answer(
+                    "Quanto custa Takamine GD20?",
+                    Evidence(
+                        "product",
+                        "products.csv",
+                        "Name: Takamine GD20\nPrice (BRL): 2199\n"
+                        "Stock in supplied CSV snapshot: 2\nStatus: active",
+                    ),
+                )
+            self.assertEqual("Resposta via caminho antigo.", answer)
+            self.assertIn("Evidência (product", str(captured[1]["messages"]))
+            self.assertNotIn("tools", captured[1])
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
+    def test_agent_tools_zero_skips_tool_request(self) -> None:
+        response = {"choices": [{"message": {"content": "Legacy answer."}}]}
+        server, captured = self._tool_server([response])
+        with patch.dict(
+            os.environ,
+            {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}", "AGENT_TOOLS": "0"},
+        ):
+            answer = model_answer(
+                "Quanto custa Takamine GD20?",
+                Evidence(
+                    "product",
+                    "products.csv",
+                    "Name: Takamine GD20\nPrice (BRL): 2199\nStock in supplied CSV snapshot: 3\nStatus: active",
+                ),
+            )
+        self.assertEqual("Legacy answer.", answer)
+        self.assertNotIn("tools", captured[0])
+
     def test_category_budget_filter_and_empty_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             csv_path = Path(directory) / "products.csv"
@@ -130,9 +388,7 @@ class AgentBehaviorTests(unittest.TestCase):
             def do_POST(self) -> None:
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 captured.append(json.loads(body))
-                response = json.dumps(
-                    {"choices": [{"message": {"content": "  "}}]}
-                ).encode()
+                response = json.dumps({"choices": [{"message": {"content": "  "}}]}).encode()
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(response)))
                 self.end_headers()
@@ -151,7 +407,9 @@ class AgentBehaviorTests(unittest.TestCase):
                 "Name: Takamine GD20\nPrice (BRL): 2199\n"
                 "Stock in supplied CSV snapshot: 3\nStatus: active",
             )
-            with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            with patch.dict(
+                os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+            ):
                 answer = model_answer("Quanto custa o Takamine GD20?", evidence)
             self.assertIn("Takamine GD20", str(captured[0]["messages"][-1]["content"]))
             self.assertIn("R$ 2.199,00", answer)

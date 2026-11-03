@@ -5,14 +5,13 @@ from __future__ import annotations
 import argparse
 import csv
 import difflib
-import json
 import os
 import re
 import sys
 import unicodedata
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 from catalog import category_evidence
 from offline_answers import Evidence, carry_over, local_answer
@@ -157,66 +156,35 @@ def load_evidence(question: str) -> Evidence | None:
     return None
 
 
-HISTORY_MESSAGES = 6
-
-
 def model_answer(
     question: str, evidence: Evidence | None, history: list[dict[str, str]] | None = None
 ) -> str:
     base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
     if not base_url:
         return local_answer(question, evidence)
-    instructions = (
-        "Você atende a Empório da Música. Responda em português brasileiro, com tom informal e profissional. "
-        "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. "
-        "Ao citar um produto, escreva o nome e o preço exatamente como na evidência. O estoque é uma fotografia do CSV, não tempo real. "
-        "Em perguntas sobre arrependimento de compra online, inclua o prazo, as condições do produto, "
-        "quem paga o frete de devolução, a forma e o prazo do reembolso, se constarem na evidência. "
-        "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais. "
-        "Sem evidência, responda cumprimentos de forma breve; para assuntos fora da loja, não responda a pergunta "
-        "e ofereça ajuda com instrumentos, preços, disponibilidade, pedidos e políticas da loja."
-    )
-    if evidence is None:
-        context = "Nenhuma evidência das fontes da loja corresponde a esta mensagem."
-    else:
-        context = f"Evidência ({evidence.kind}, fonte {evidence.source}):\n{evidence.text}"
-    payload = json.dumps(
-        {
-            "model": os.getenv("OPENAI_MODEL", "lfm3-omni-2b"),
-            "messages": [
-                {"role": "system", "content": instructions},
-                *(history or [])[-HISTORY_MESSAGES:],
-                {"role": "user", "content": f"Pergunta do cliente: {question}\n\n{context}"},
-            ],
-        }
-    ).encode()
-    request = Request(
-        f"{base_url}/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', 'local')}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=45) as response:
-            result = json.loads(response.read())
-        content = result["choices"][0]["message"]["content"].strip()
-        return content or local_answer(question, evidence)
-    except (
-        HTTPError,
-        URLError,
-        TimeoutError,
-        ValueError,
-        KeyError,
-        IndexError,
-        TypeError,
-    ) as error:
-        print(
-            f"API indisponível ({error}); usando resposta local baseada na fonte.", file=sys.stderr
-        )
-        return local_answer(question, evidence)
+    if os.getenv("AGENT_TOOLS", "1") != "0":
+        from tool_calling import run_tool_agent
+
+        try:
+            answer = run_tool_agent(question, history)
+            if answer:
+                return answer
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as error:
+            print(
+                f"API com ferramentas indisponível ({error}); tentando caminho legado.",
+                file=sys.stderr,
+            )
+    from legacy_model import answer
+
+    return answer(question, evidence, history)
 
 
 def print_response(

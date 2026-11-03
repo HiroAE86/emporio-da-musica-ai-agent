@@ -6,9 +6,9 @@ PY := $(VENV)/bin/python
 CLI := $(PY) tools/agent_cli.py
 
 -include .env
-export OPENAI_BASE_URL OPENAI_MODEL OPENAI_API_KEY
+export OPENAI_BASE_URL OPENAI_MODEL OPENAI_API_KEY AGENT_TOOLS
 
-.PHONY: help setup preflight test lint demo chat ask order clean
+.PHONY: help setup preflight test lint demo chat ask order policies clean
 
 help: ## List available commands
 	@grep -E "^[a-z]+:.*## " $(MAKEFILE_LIST) | awk -F ":.*## " "{printf \"  make %-10s %s\n\", \$$1, \$$2}"
@@ -28,6 +28,9 @@ test: $(PY) ## Run the offline test suite
 lint: $(PY) ## Run Ruff lint and format checks
 	@$(PY) -m pip install -q ruff
 	@PATH="$(VENV)/bin:$$PATH" sh scripts/check_python.sh
+
+policies: $(PY) ## Regenerate the markdown policy wiki from the source PDF
+	@$(PY) tools/policy_markdown.py
 
 demo: $(PY) ## Run the example questions from the case
 	@for q in \

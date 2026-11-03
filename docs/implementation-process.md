@@ -27,16 +27,16 @@ The policy PDF and source CSVs remain the source of truth. Do not invent store f
 
 The Python CLI uses direct retrieval and one model provider. Product and policy answers receive only the selected evidence. Order status is verified locally against fictional public fixture data or private local CSVs. The response includes status and estimated delivery only.
 
-The CLI is sufficient because the brief permits it and the focus is on the agent working correctly. Conversation-history persistence is not needed for these one-turn examples. The model uses an OpenAI-compatible local endpoint configured through environment variables.
+The CLI is sufficient because the brief permits it and the focus is on the agent working correctly. Conversation history remains in memory and bounded to six recent messages. The optional model endpoint uses OpenAI-compatible Chat Completions tool calling; offline keyword routing remains the default when no endpoint is configured.
 
 ## 4. Implementation sequence
 
 1. Reviewed the brief, operational CSV schemas, and policy PDF.
-2. Implemented direct product and policy retrieval with a local model call and local fallback replies.
+2. Added a reproducible PDF-to-Markdown policy wiki and an OpenAI-compatible tool loop for product, category, policy, and locally verified order lookup.
 3. Added a local order-status check using an order ID and registered email, with fictional public fixtures.
 4. Saved four conversations and checked their facts against the product CSV, fixture CSVs, and policy section 4.1.
 5. Recorded the design reasons in `docs/architecture.md` and summarized them in the README.
-6. Committed focused changes. GitHub publication and email submission remain.
+6. Kept offline behavior as the default and added fake-server tests for tool fallback and privacy boundaries.
 
 ## 5. Acceptance checks
 
@@ -45,7 +45,7 @@ The CLI is sufficient because the brief permits it and the focus is on the agent
 - Product facts come from operational CSV data; policy rules come from the store manual.
 - Unknown or unsupported facts are identified as unknown rather than guessed.
 - Customer contact data is not included in answers; order status is returned only after local verification.
-- The README and four varied conversation examples are present and reproducible.
+- The README and five varied offline conversation examples are present and reproducible.
 - The public repository is submitted by the deadline.
 
 ## 6. Current gaps

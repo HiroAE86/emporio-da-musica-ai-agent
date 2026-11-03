@@ -17,11 +17,7 @@ Yamaha F310 Aço Natural — R$ 699,90 — disponível
 Giannini GF-1R Aço Folk Sunburst — R$ 579,90 — disponível
 Shelby SN-100 Folk Aço Preto — R$ 549,00 — disponível
 Tagima Woodstock Dreadnought Natural — R$ 899,00 — disponível
-Giannini GF-3D Dreadnought Sunburst — R$ 799,90 — indisponível
-Shelby SGD-195E Elétrico Aço Sunburst — R$ 799,00 — disponível
-Tagima TW-7 7 Cordas Aço Natural — R$ 999,00 — disponível
-Shelby SN-7C 7 Cordas Nylon Natural — R$ 749,00 — indisponível
-Kala KA-B Barítono Mogno — R$ 599,00 — disponível
+(mais 4 produto(s) nesta categoria)
 Fonte: Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv
 
 ## Product price and availability

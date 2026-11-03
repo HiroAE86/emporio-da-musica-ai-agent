@@ -12,7 +12,8 @@ def mode_description() -> str:
     endpoint = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
     if not endpoint:
         return "modo local (sem modelo configurado)"
-    return f"modelo {os.getenv('OPENAI_MODEL') or 'lfm3-omni-2b'} em {endpoint}"
+    default_model = "lfm3-omni-2b" if os.getenv("AGENT_TOOLS") == "0" else "gpt-4o-mini"
+    return f"modelo {os.getenv('OPENAI_MODEL') or default_model} em {endpoint}"
 
 
 def interactive() -> None:
