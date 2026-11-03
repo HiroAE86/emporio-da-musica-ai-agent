@@ -10,16 +10,16 @@ import re
 import sys
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from pypdf import PdfReader
-
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
+from pypdf import PdfReader
 
 DATA = resolve_data_dir()
-PRODUCTS = next(DATA.glob("*products.csv"))
+PRODUCTS = Path(os.getenv("PRODUCTS_CSV", next(DATA.glob("*products.csv"))))
 POLICY_PDF = resolve_policy_pdf()
 POLICY_TERMS = (
     "troca",
@@ -87,6 +87,13 @@ class Evidence:
     text: str
 
 
+def source_name(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKD", text.casefold())
     return "".join(char for char in text if not unicodedata.combining(char))
@@ -115,7 +122,7 @@ def load_evidence(question: str) -> Evidence | None:
         if not matches:
             return Evidence(
                 "product",
-                str(PRODUCTS.relative_to(ROOT)),
+                source_name(PRODUCTS),
                 "No matching product was found in the catalog.",
             )
         best_score = max(match[0] for match in matches)
@@ -124,7 +131,7 @@ def load_evidence(question: str) -> Evidence | None:
             names = ", ".join(match[2]["name"] for match in best[:5])
             return Evidence(
                 "product",
-                str(PRODUCTS.relative_to(ROOT)),
+                source_name(PRODUCTS),
                 f"Several products may match. Ask the customer to clarify: {names}",
             )
         _, row_number, row = best[0]
@@ -133,7 +140,7 @@ def load_evidence(question: str) -> Evidence | None:
             f"Stock in supplied CSV snapshot: {row['stock_quantity']}\nStatus: {row['status']}\n"
             f"Description: {row['description']}\nCSV row: {row_number}"
         )
-        return Evidence("product", str(PRODUCTS.relative_to(ROOT)), text)
+        return Evidence("product", source_name(PRODUCTS), text)
     return None
 
 
@@ -164,7 +171,9 @@ def local_answer(question: str, evidence: Evidence | None) -> str:
 def model_answer(question: str, evidence: Evidence | None) -> str:
     if evidence is None:
         return local_answer(question, evidence)
-    base_url = os.getenv("OPENAI_BASE_URL", "http://100.111.77.36:1234/v1").rstrip("/")
+    base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
+    if not base_url:
+        return local_answer(question, evidence)
     instructions = (
         "Você atende a Empório da Música. Responda em português brasileiro, com tom informal e profissional. "
         "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. O estoque é uma fotografia do CSV, não tempo real. "
@@ -222,19 +231,26 @@ def print_response(question: str, prefix: str = "") -> None:
         print(f"Fonte: {evidence.source}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "message", nargs="*", help="customer message; omit to start interactive mode"
-    )
-    args = parser.parse_args()
-    if args.message:
-        try:
-            print_response(" ".join(args.message))
-        except (OSError, StopIteration) as error:
-            parser.error(f"não consegui consultar as fontes: {error}")
+def preflight() -> None:
+    missing = [str(path) for path in (PRODUCTS, POLICY_PDF) if not path.is_file()]
+    if missing:
+        print("Missing required data files: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(2)
+    print(f"Data files: OK ({PRODUCTS.name}, {POLICY_PDF.name})")
+    endpoint = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
+    if not endpoint:
+        print("Model endpoint: not configured; local answers are enabled")
         return
+    try:
+        with urlopen(f"{endpoint}/models", timeout=5) as response:
+            response.read(1)
+        print(f"Model endpoint: reachable ({endpoint})")
+    except (HTTPError, URLError, TimeoutError, ValueError) as error:
+        print(f"Model endpoint: unavailable ({error}); local answers are enabled")
+        raise SystemExit(1)
 
+
+def interactive() -> None:
     print("Empório da Música. Digite 'sair' para encerrar.")
     while True:
         try:
@@ -248,8 +264,28 @@ def main() -> None:
             continue
         try:
             print_response(question, "Loja: ")
-        except (OSError, subprocess.CalledProcessError, StopIteration) as error:
+        except (OSError, StopIteration) as error:
             print(f"Não consegui consultar as fontes: {error}", file=sys.stderr)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--preflight", action="store_true", help="check source files and model endpoint"
+    )
+    parser.add_argument(
+        "message", nargs="*", help="customer message; omit to start interactive mode"
+    )
+    args = parser.parse_args()
+    if args.preflight:
+        preflight()
+    elif args.message:
+        try:
+            print_response(" ".join(args.message))
+        except (OSError, StopIteration) as error:
+            parser.error(f"não consegui consultar as fontes: {error}")
+    else:
+        interactive()
 
 
 if __name__ == "__main__":

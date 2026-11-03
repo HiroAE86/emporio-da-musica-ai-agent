@@ -1,45 +1,44 @@
-# Example conversations
+# Verified CLI conversations
 
-These examples were run with `python3 tools/agent_cli.py` against the configured OpenAI-compatible local model. The order-status example uses fictional data from `examples/fixtures/`. The out-of-scope question is handled locally by design.
+These transcripts were run on 2026-11-03 with `OPENAI_BASE_URL` unset, so answers use the local fallback and require no model endpoint. Product and policy responses cite the supplied source. Order data is fictional.
 
 ## Product price and availability
 
 **Customer:** Quanto custa o Takamine GD20?
 
-**Empório da Música:** O Takamine GD20 custa **R$ 2199**.
+**Empório da Música:** Oi! Takamine GD20 Dreadnought Natural está cadastrado por R$ 2.199,00 e aparece como disponível no arquivo, com 5 unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo.
 
-**Source:** `Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv`
+**Source:** `Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv`
 
-## Return policy
+## Applying the online regret-return policy
 
 **Customer:** Comprei online há cinco dias e me arrependi. Posso devolver?
 
-**Empório da Música:** Com base na evidência fornecida, aqui estão as informações sobre o arrependimento de compra online:
+**Empório da Música:** Oi! Para compras online, você pode pedir a devolução em até 7 dias corridos após receber o produto, sem justificar. Ele precisa estar sem uso, na embalagem original e com acessórios e manuais. A loja paga o frete de devolução, e o reembolso ocorre pela forma de pagamento original em até 10 dias úteis.
 
-* **Prazo para devolução:** O cliente pode solicitar a devolução em até 7 (sete) dias corridos após o recebimento do produto, sem necessidade de justificativa.
-* **Condições do produto:** O produto deve estar em sua embalagem original, sem sinais de uso, com todos os acessórios e manuais.
-* **Quem paga o frete de devolução:** O frete de devolução é por conta da loja em caso de arrependimento.
-* **Forma e prazo do reembolso:** O reembolso será realizado na mesma forma de pagamento original em até 10 dias úteis.
+**Source:** `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf`
 
-**Source:** `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf`
-
-## Order status
+## Order verification
 
 **Customer:** Qual é o status do meu pedido?
 
-**CLI prompt:** Número do pedido
+**CLI:** Número do pedido:
 
 **Customer:** TESTE-100
 
-**CLI prompt:** E-mail cadastrado (hidden input)
+**CLI:** E-mail cadastrado:
 
-**Customer:** `cliente@example.test`
+**Customer:** cliente@example.test
 
-**Empório da Música:** Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: `orders.csv`.
+**CLI:** Telefone cadastrado:
+
+**Customer:** 67999990000
+
+**Empório da Música:** Status do pedido: shipped. Previsão de entrega: 2026-11-05. Fonte: orders.csv.
 
 **Source:** `examples/fixtures/orders.csv` and `examples/fixtures/customers.csv` (fictional data)
 
-## Out-of-scope question
+## Out of scope
 
 **Customer:** Qual é a capital da França?
 

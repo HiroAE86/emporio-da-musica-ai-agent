@@ -1,56 +1,28 @@
-# Requisitos do desafio técnico — AI Engineer
+# Challenge requirements
 
-Fonte: `Desafio Técnico AI Engineer 2026/desafio_tecnico_ai_eng_artefact.pdf`.
+Source: [`Desafio Técnico AI Engineer 2026/desafio_tecnico_ai_eng_artefact.pdf`](../Desafio%20T%C3%A9cnico%20AI%20Engineer%202026/desafio_tecnico_ai_eng_artefact.pdf), extracted with `pypdf` on 2026-11-03. The original brief asks for a Python text-message customer-service agent for the fictional Empório da Música in Campo Grande/MS. All technical choices below are open unless the brief says otherwise.
 
-## Objetivo
+## Required behavior
 
-Construir em Python um agente de atendimento por mensagens para a loja fictícia Empório da Música, em Campo Grande/MS, para apoiar a equipe com perguntas recorrentes.
+- Use a persona and tone aligned with the store.
+- Receive messages and answer using the supplied context.
+- Choose when to consult operational data (examples: product availability, price, order status) and when to consult policy (examples: exchanges, hours, payment methods).
+- Handle questions outside the store's scope appropriately.
 
-## Comportamento obrigatório
+## Technical decisions to document in README
 
-- Usar persona e tom alinhados à identidade da loja.
-- Receber mensagens e responder com base no contexto fornecido.
-- Consultar dados operacionais para fatos como preço, disponibilidade de produtos e status de pedidos.
-- Consultar as políticas para regras como trocas, devoluções, horários de funcionamento e formas de pagamento.
-- Lidar adequadamente com perguntas fora do escopo.
+- Agent framework or approach (examples: RAG, function calling, ReAct, SQL agent, hybrid).
+- Model and provider; paid, free, local, and API models are allowed.
+- User interface (examples: CLI, notebook, API, simple UI).
+- Whether conversation history persists.
+- Data handling.
+- Python is the only mandatory technical constraint. For ambiguity or unavailable information, make a reasonable assumption and document it.
 
-## Fontes fornecidas
+## Deliverables from the brief
 
-- `Desafio Técnico AI Engineer 2026/data/*.csv`: tabelas operacionais, incluindo produtos, pedidos, clientes e promoções.
-- `Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf`: manual interno de políticas e procedimentos de atendimento.
-- O uso de todos os dados é opcional; selecionar o que contribuir para a experiência.
+1. A public GitHub repository containing the project, with meaningful progress in commit history. Do not collapse all work into one force-pushed commit or change the repository after the stated deadline.
+2. A README with setup and model-provider instructions, run commands, technical rationale (including retrieval and prompt strategy), known limitations and improvements possible with more time, and an account of coding assistants used and how.
+3. Three to five varied agent conversations in Markdown, text, or image format. At least one must show a non-trivial data lookup or policy application. Suggested questions include available guitars under R$1,000, store address, Takamine GD20 price, and the online regret-return policy.
+4. Reply to the recruiting email with the public repository link before the deadline stated in that email.
 
-## Decisões técnicas a documentar
-
-O README deve justificar:
-
-- abordagem/framework do agente (por exemplo, RAG, chamadas de ferramentas, ReAct, agente SQL ou híbrido);
-- modelo e provedor;
-- interface (CLI, notebook, API ou UI simples);
-- persistência do histórico, se fizer sentido;
-- tratamento dos dados.
-
-Python é a única restrição técnica obrigatória. Quando houver ambiguidade ou informação indisponível, assumir uma interpretação razoável e registrá-la no README.
-
-## Entregáveis
-
-1. Repositório Git público no GitHub, com histórico de commits que mostre progresso real. Não consolidar todo o trabalho em um único force-push nem alterar o repositório após o prazo de entrega.
-2. README com configuração do ambiente e provedor, comandos para executar, justificativas técnicas (incluindo retrieval e estratégia de prompt), limitações conhecidas e melhorias futuras, e declaração de assistentes de código usados e como.
-3. De 3 a 5 conversas de exemplo em `.md`, `.txt` ou imagem, cobrindo cenários variados. Pelo menos uma deve demonstrar consulta não trivial a dados ou aplicação de política.
-4. Enviar o link do repositório público em resposta ao e-mail do processo seletivo, dentro do prazo comunicado.
-
-## Cenários sugeridos
-
-- Listar violões disponíveis que custem até R$ 1.000.
-- Informar o endereço da loja.
-- Consultar o preço do Takamine GD20.
-- Explicar se uma compra por arrependimento pode ser devolvida, aplicando a política.
-
-## Checklist de aceite
-
-- [ ] Python é a linguagem principal.
-- [ ] Persona, respostas baseadas no contexto, escolha entre dados e políticas, e tratamento de perguntas fora de escopo estão demonstrados.
-- [ ] Fatos operacionais vêm dos CSVs relevantes; respostas de política vêm do manual.
-- [ ] README contém instruções de execução, decisões e justificativas, limitações e declaração de uso de assistentes.
-- [ ] Há de 3 a 5 conversas variadas, incluindo uma consulta ou aplicação de política não trivial.
-- [ ] O link do repositório público é enviado até o prazo.
+The recruiter additionally asks for an English README covering setup, technical decisions, limitations, and AI-tool use; three to five conversations, including one non-trivial example; and real commit history. These requirements overlap with the brief and are tracked in the Portuguese handoff summary.

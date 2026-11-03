@@ -5,7 +5,7 @@ __pycache__/
 
 # Keep source data and the local knowledge utility out of Git.
 /Desafio*/data/*.csv
-/Desafio*/desafio*.pdf
+!/Desafio*/desafio_tecnico_ai_eng_artefact.pdf
 /tools/project_knowledge.py
 /docs/knowledge-index.json
 *.egg-info/
