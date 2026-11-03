@@ -41,7 +41,8 @@ def local_answer(question: str, evidence: Evidence | None) -> str:
         return "Oi! Encontrei estas opções no catálogo:\n" + formatted
     if evidence.kind == "policy" and evidence.text:
         return policy_answer(question, evidence.text)
-    if any(term in normalize(question) for term in ("arrepend", "devol", "retorn")):
+    query = normalize(question)
+    if "defeito" not in query and any(term in query for term in ("arrepend", "devol", "retorn")):
         return regret_answer()
     return "Encontrei informações da política da loja. Não consegui resumir esta política agora; consulte a fonte ou fale com a equipe da loja."
 
@@ -62,10 +63,15 @@ def policy_answer(question: str, source_text: str) -> str:
         "payment": ("pagamento", "pix", "cartao", "boleto"),
     }
     query = normalize(question)
-    if any(term in query for term in ("devol", "arrepend", "retorn")):
+    is_defect = any(term in query for term in ("defeito", "quebrad", "estragad", "nao funciona"))
+    if not is_defect and any(term in query for term in ("devol", "arrepend", "retorn")):
         return regret_answer()
-    key = next(
-        (name for name, terms in topics.items() if any(term in query for term in terms)), None
+    key = (
+        "exchange"
+        if is_defect
+        else next(
+            (name for name, terms in topics.items() if any(term in query for term in terms)), None
+        )
     )
     if key is None:
         return "Encontrei informações da política da loja. Não consegui resumir esta política agora; consulte a fonte ou fale com a equipe da loja."

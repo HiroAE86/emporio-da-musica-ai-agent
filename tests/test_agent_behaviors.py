@@ -60,6 +60,7 @@ class AgentBehaviorTests(unittest.TestCase):
             "Qual o horário de funcionamento?": "9h às 18h",
             "Quais formas de pagamento aceitam?": "5% de desconto",
             "Como funciona a troca por defeito?": "30 dias corridos",
+            "Vocês aceitam devolução de produto com defeito?": "30 dias corridos",
         }
         for question, expected in questions.items():
             with self.subTest(question=question):
