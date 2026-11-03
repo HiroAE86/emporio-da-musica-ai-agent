@@ -7,12 +7,13 @@ import csv
 import json
 import os
 import re
-import subprocess
 import sys
 import unicodedata
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from pypdf import PdfReader
 
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
@@ -94,12 +95,7 @@ def normalize(text: str) -> str:
 def load_evidence(question: str) -> Evidence | None:
     query = normalize(question)
     if any(term in query for term in POLICY_TERMS):
-        extracted = subprocess.run(
-            ["pdftotext", "-layout", str(POLICY_PDF), "-"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
+        extracted = "\n".join(page.extract_text() or "" for page in PdfReader(POLICY_PDF).pages)
         return Evidence("policy", str(POLICY_PDF.relative_to(ROOT)), extracted[:18000])
 
     with PRODUCTS.open(encoding="utf-8-sig", newline="") as file:
@@ -235,7 +231,7 @@ def main() -> None:
     if args.message:
         try:
             print_response(" ".join(args.message))
-        except (OSError, subprocess.CalledProcessError, StopIteration) as error:
+        except (OSError, StopIteration) as error:
             parser.error(f"não consegui consultar as fontes: {error}")
         return
 

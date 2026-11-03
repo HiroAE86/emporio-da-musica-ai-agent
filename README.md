@@ -4,7 +4,15 @@ A small Python command-line agent for the Empório da Música case. It answers p
 
 ## Run
 
-Python 3.10 or newer and `pdftotext` are required. No Python packages need installation.
+Python 3.10 or newer is required. Policy extraction uses the declared pure-Python `pypdf` dependency; no system PDF utility is needed. Install the project once in a virtual environment:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
+```
+
+Then run the commands below in that activated environment.
 
 ```sh
 python3 tools/agent_cli.py "Quanto custa o Takamine GD20?"
@@ -29,7 +37,7 @@ The CLI reads environment variables directly; it does not parse `.env` files its
 
 ## Technical choices
 
-**Approach and retrieval.** A keyword router sends product questions to the products CSV, store-rule questions to the policy PDF, and order-status requests to a local verifier. Product lookup uses word overlap against product names and returns the unique best match. Policy lookup extracts up to 18,000 characters with `pdftotext`. This direct approach fits the fixed demo sources. I did not evaluate a vector database or agent framework because the brief does not require semantic retrieval.
+**Approach and retrieval.** A keyword router sends product questions to the products CSV, store-rule questions to the policy PDF, and order-status requests to a local verifier. Product lookup uses word overlap against product names and returns the unique best match. Policy lookup extracts up to 18,000 characters with `pypdf`, installed from the declared project dependency. This direct approach fits the fixed demo sources. I did not evaluate a vector database or agent framework because the brief does not require semantic retrieval.
 
 **Model and prompt.** The default is the locally served `lfm3-omni-2b` model supplied for this project. The CLI calls its OpenAI-compatible Chat Completions endpoint with Python's `urllib`, so no API SDK is needed. The system prompt sets a cordial Brazilian Portuguese tone, restricts answers to retrieved evidence, asks the model to state when facts are missing, and requires the full return conditions when answering about regret returns. It also labels stock as a snapshot and tells the model not to disclose personal data. The CLI does not enforce these prompt instructions with an output validator.
 
@@ -46,7 +54,7 @@ For the full decision record, evidence links, and limits, see [Technical decisio
 - Product matching is lexical and designed for the supplied case, not a production catalog.
 - Stock is shown from the supplied CSV snapshot. It is not live inventory.
 - Order lookup asks for the order ID and registered email, then returns only status and estimated delivery. This email check is a basic demo safeguard, not production identity verification. Real customer and order CSVs are not included in the public repository.
-- Install `pdftotext` to answer policy questions.
+- Install the project dependencies with `python -m pip install -e .` to enable policy extraction.
 - Prompt rules are instructions, not enforced guarantees; matched product and policy questions are sent to the configured model as typed.
 
 ## Future improvements

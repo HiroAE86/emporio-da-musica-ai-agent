@@ -8,3 +8,4 @@ __pycache__/
 /Desafio*/desafio*.pdf
 /tools/project_knowledge.py
 /docs/knowledge-index.json
+*.egg-info/
