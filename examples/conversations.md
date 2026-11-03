@@ -1,6 +1,6 @@
 # Model conversation examples
 
-These transcripts were copied from `make qa` using `lfm3-omni-2b` through LM Studio in tools mode. Answers are verbatim from `/interviews/qa_mac_run2.md`. The verified order reply below was regenerated offline after translating CSV statuses to Brazilian Portuguese.
+The existing examples preserve the `lfm3-omni-2b` transcripts from LM Studio. The Nemotron transcripts at the end are verbatim from the 2026-11-03 QA report and include the recorded tool calls. The verified order reply was regenerated offline after translating CSV statuses to Brazilian Portuguese.
 
 ## Product recommendation with a budget
 
@@ -73,3 +73,31 @@ Você tem o produto em mãos ou ainda está aguardando a entrega?
 **Customer:** Qual é a capital da França?
 
 **Empório da Música:** Não consigo ajudar com perguntas de conhecimento geral. Posso ajudar com instrumentos musicais, preços, disponibilidade, políticas da loja ou status de pedidos.
+
+## Nemotron 3 Nano Cloud tool calls
+
+**User:** Qual guitarra vocês têm?
+
+**Assistant:** Aqui estão as guitarras que temos disponíveis:
+
+- **Fender Stratocaster American Pro II** – R$ 12.500,00
+- **Gibson Les Paul Standard '50s** – R$ 18.900,00
+- **Ibanez RG550 Genesis Collection** – R$ 7.500,00
+- **PRS SE Custom 24** – R$ 6.800,00
+- **Fender Telecaster Player Series** – R$ 5.400,00
+
+Todas estão disponíveis para venda. Quer mais detalhes sobre algum modelo?
+
+Mode: tools · Path: tools · Source: Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv · Tools: [{"name": "list_category", "arguments": {"category": "guitarra"}}] · Latency: 3.509s
+
+**User:** Comprei um produto com defeito. Posso trocar em até 30 dias?
+
+**Assistant:** Sim! Segundo a política da **Empório da Música**, produtos com defeito de fabricação podem ser trocados em **até 30 (trinta) dias corridos** após a compra.  
+
+*Condições principais:*
+- O defeito deve ser de fábrica (não cobre danos por uso indevido, quedas, umidade ou modificações não autorizadas).  
+- Após os 30 dias, o cliente deve acionar a garantia diretamente com o fabricante, embora a loja possa intermediar o processo se solicitado.  
+
+Se o seu caso se encaixa nesses itens, basta entrar em contato pelo WhatsApp ou comparecer à loja com o produto e o comprovante de compra para iniciar a troca.
+
+Mode: tools · Path: tools · Source: Desafio Técnico AI Engineer 2026/data/políticas_da_loja.pdf · Tools: [{"name": "read_policy", "arguments": {"section": "exchange"}}] · Latency: 7.872s

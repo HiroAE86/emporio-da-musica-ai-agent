@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from unittest.mock import patch
 
-from agent_cli import Evidence, load_evidence, local_answer, model_answer, print_response  # noqa: E402
-from offline_answers import carry_over  # noqa: E402
+from agent_cli import Evidence, load_evidence, model_answer, print_response  # noqa: E402
+from offline_answers import carry_over, local_answer  # noqa: E402
 from order_status import GENERIC_MISMATCH, lookup_order_status  # noqa: E402
 from tool_calling import run_tool_agent  # noqa: E402
 
@@ -58,7 +58,7 @@ class AgentBehaviorTests(unittest.TestCase):
         system_prompt = captured[0]["messages"][0]["content"]
         self.assertIn("claramente sobre conhecimento geral", system_prompt)
 
-    def test_tool_agent_preloads_catalog_overview_for_small_models(self) -> None:
+    def test_tool_agent_does_not_preload_tools_before_model_choice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             csv_path = Path(directory) / "products.csv"
             csv_path.write_text(
@@ -78,9 +78,87 @@ class AgentBehaviorTests(unittest.TestCase):
             ):
                 answer = run_tool_agent("Oi, o que vocês vendem?")
             messages = captured[0]["messages"]
-            self.assertIn("violões: 1 produto(s)", messages[-1]["content"])
-            self.assertIn("guitarras: 1 produto(s)", messages[-1]["content"])
+            self.assertEqual("user", messages[-1]["role"])
+            self.assertNotIn("tool_calls", str(messages))
             self.assertIn("Vendemos violões", str(answer))
+
+    def test_skipped_tool_retries_with_preretrieved_evidence(self) -> None:
+        server, captured = self._tool_server(
+            [{"choices": [{"message": {"content": "O Takamine GD20 custa R$ 2.199,00."}}]}]
+        )
+        metadata: dict = {}
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            answer = model_answer(
+                "Quanto custa o Takamine GD20?",
+                load_evidence("Quanto custa o Takamine GD20?"),
+                metadata=metadata,
+            )
+        self.assertEqual("preretrieve", metadata["path"])
+        self.assertEqual(2, len(captured))
+        self.assertIn("Takamine GD20", answer)
+
+    def test_model_tool_call_is_recorded_and_used(self) -> None:
+        tool_call = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "x",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_products",
+                                    "arguments": '{"query":"Takamine GD20"}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"content": "O Takamine GD20 custa R$ 2.199,00."}}]}
+        server, _ = self._tool_server([tool_call, final])
+        metadata: dict = {}
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            answer = model_answer(
+                "Quanto custa o Takamine GD20?",
+                load_evidence("Quanto custa o Takamine GD20?"),
+                metadata=metadata,
+            )
+        self.assertEqual("tools", metadata["path"])
+        self.assertEqual("search_products", metadata["tool_calls"][0]["name"])
+        self.assertIn("Takamine GD20", answer)
+
+    def test_bad_grounding_uses_local_answer_after_retry(self) -> None:
+        tool_call = {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "x",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_products",
+                                    "arguments": '{"query":"Takamine GD20"}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        bad = {"choices": [{"message": {"content": "O Takamine GD20 custa R$ 1,00."}}]}
+        server, _ = self._tool_server([tool_call, bad])
+        metadata: dict = {}
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            answer = model_answer(
+                "Quanto custa o Takamine GD20?",
+                load_evidence("Quanto custa o Takamine GD20?"),
+                metadata=metadata,
+            )
+        self.assertEqual("local", metadata["path"])
+        self.assertIn("R$ 2.199,00", answer)
 
     def test_tool_agent_retrieves_explicit_guitar_category_after_violin_followup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -111,7 +189,7 @@ class AgentBehaviorTests(unittest.TestCase):
             self.assertNotIn("Yamaha C40", guitar)
             self.assertIn("Categoria: guitarras", corrected.text)
             self.assertIn("Fender Stratocaster", corrected_answer)
-            self.assertEqual([], captured)
+            self.assertGreater(len(captured), 0)
 
     def test_tool_agent_dispatches_across_multiple_rounds(self) -> None:
         first = {
@@ -387,29 +465,41 @@ class AgentBehaviorTests(unittest.TestCase):
             previous = None
             answers = []
             try:
-                with patch("agent_cli.PRODUCTS", csv_path), patch.dict(
-                    os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                with (
+                    patch("agent_cli.PRODUCTS", csv_path),
+                    patch.dict(
+                        os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                    ),
                 ):
                     for question in questions:
-                        answer, previous = print_response(question, history=history, previous=previous)
+                        answer, previous = print_response(
+                            question, history=history, previous=previous
+                        )
                         answers.append(answer)
                         history.extend(
-                            [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+                            [
+                                {"role": "user", "content": question},
+                                {"role": "assistant", "content": answer},
+                            ]
                         )
                 with patch("agent_cli.PRODUCTS", csv_path):
-                    self.assertIn("Correspondências até R$ 500,00: 2", load_evidence(questions[0]).text)
+                    self.assertIn(
+                        "Correspondências até R$ 500,00: 2", load_evidence(questions[0]).text
+                    )
                     self.assertIn("Categoria: guitarras", load_evidence(questions[1]).text)
                     guitar = load_evidence(questions[1]).text
                     self.assertIn("Limite de preço desta consulta: nenhum", guitar)
                     self.assertIn("Fender Stratocaster", guitar)
                     no_guitar_under_limit = load_evidence("guitarra até R$ 500")
-                    self.assertIn("Correspondências dentro do limite: 0", no_guitar_under_limit.text)
+                    self.assertIn(
+                        "Correspondências dentro do limite: 0", no_guitar_under_limit.text
+                    )
                     self.assertIn("Fender Stratocaster — R$ 5.400,00", no_guitar_under_limit.text)
                     self.assertIn("Categoria: baixos", load_evidence(questions[2]).text)
                     self.assertIn("Ibanez Bass", load_evidence(questions[3]).text)
                 self.assertIn("Fender Stratocaster", answers[-1])
                 self.assertNotIn("Ibanez Bass", answers[-1])
-                self.assertEqual(0, len(captured), "catalog answers should bypass weak model output")
+                self.assertGreater(len(captured), 0, "store turns should reach the model first")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -424,7 +514,9 @@ class AgentBehaviorTests(unittest.TestCase):
             "Name: Yamaha C40\nPrice (BRL): 599.9\nStock in supplied CSV snapshot: 2\nStatus: active",
         )
         try:
-            with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+            with patch.dict(
+                os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+            ):
                 answer = model_answer("Quanto custa Yamaha C40?", evidence)
             self.assertIn("Yamaha C40", answer)
             self.assertIn("R$ 599,90", answer)

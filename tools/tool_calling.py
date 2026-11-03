@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from catalog import category_evidence
-from intent_router import deterministic_tool, evidence_messages
+from model_safety import model_safe
 from offline_answers import normalize
 from project_paths import ROOT
 
@@ -23,7 +23,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_catalog",
-            "description": "Summarize catalog categories and product counts.",
+            "description": "Return each category's exact product count and price range from the products CSV. For catalog overview questions, call this tool and report only these returned facts.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -222,18 +222,12 @@ def _tool_result(call: dict[str, Any]) -> str:
         return f"Tool {name} could not read its source: {error}"
 
 
-def _model_safe(text: str) -> str:
-    text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[redacted email]", text)
-    text = re.sub(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)", "[redacted phone]", text)
-    return re.sub(
-        r"\b((?:pedido|order|ordem)\s*(?:n[ºo.]?\s*)?[:#-]?\s*)[A-Z0-9][A-Z0-9-]{2,}\b",
-        r"\1[redacted order id]",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-
-def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -> str | None:
+def run_tool_agent(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    call_log: list[dict[str, Any]] | None = None,
+    evidence: str = "",
+) -> str | None:
     """Return model content, or None when tool support is unavailable/invalid."""
     base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
     instructions = (
@@ -241,7 +235,8 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
         "Use somente os campos presentes nos resultados das ferramentas; não invente atributos, colunas, instruções ou detalhes. "
         "Nunca chame uma categoria pelo nome de outra. Se a pessoa corrigir sua resposta ou especificar outra categoria, consulte novamente. "
         "A evidência da consulta atual prevalece sobre o histórico. Não reutilize categoria ou limite de preço anterior quando a pessoa indicar outra categoria; aplique limites só se forem pedidos na mensagem atual. "
-        "Use as ferramentas para consultar fatos; não invente. A lista de fontes e seções disponíveis:\n"
+        "Para perguntas sobre produtos ou políticas, chame a ferramenta adequada antes de responder. "
+        "Não responda fatos da loja sem consultar uma ferramenta. Em listas e resumos, use somente nomes e preços presentes no resultado; não estime faixas de preço. Use apenas os resultados. A lista de fontes e seções disponíveis:\n"
         + (ROOT / "knowledge" / "INDEX.md").read_text(encoding="utf-8")
         + "\nDados de cliente nunca devem ser solicitados por ferramenta nem repetidos. "
         + "Se a mensagem for claramente sobre conhecimento geral sem relação com a loja, recuse e redirecione para catálogo, políticas ou pedidos."
@@ -249,15 +244,13 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": instructions},
         *[
-            {**item, "content": _model_safe(item.get("content", ""))}
+            {**item, "content": model_safe(item.get("content", ""))}
             for item in (history or [])[-6:]
         ],
-        {"role": "user", "content": _model_safe(question)},
+        {"role": "user", "content": model_safe(question)},
     ]
-    deterministic = deterministic_tool(question)
-    if deterministic:
-        name, args = deterministic
-        messages.extend(evidence_messages(name, args, _dispatch(name, args)))
+    if evidence:
+        messages.append({"role": "system", "content": "Evidência local:\n" + evidence})
     for round_number in range(MAX_TOOL_ROUNDS + 1):
         payload = json.dumps(
             {
@@ -293,6 +286,13 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
             {"role": "assistant", "content": choice.get("content"), "tool_calls": calls}
         )
         for call in calls:
+            if call_log is not None:
+                function = call.get("function", {})
+                try:
+                    args = _arguments(function.get("arguments", {}))
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    args = {}
+                call_log.append({"name": function.get("name", "unknown"), "arguments": args})
             messages.append(
                 {"role": "tool", "tool_call_id": call.get("id", ""), "content": _tool_result(call)}
             )
