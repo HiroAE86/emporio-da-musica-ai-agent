@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import json
 import os
 import re
@@ -19,9 +20,17 @@ from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
 from pypdf import PdfReader
 
-DATA = resolve_data_dir()
-PRODUCTS = Path(os.getenv("PRODUCTS_CSV", next(DATA.glob("*products.csv"))))
-POLICY_PDF = resolve_policy_pdf()
+try:
+    DATA = resolve_data_dir()
+except FileNotFoundError:
+    DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
+PRODUCTS = Path(
+    os.getenv("PRODUCTS_CSV") or next(DATA.glob("*products.csv"), DATA / "products.csv")
+)
+try:
+    POLICY_PDF = resolve_policy_pdf()
+except FileNotFoundError:
+    POLICY_PDF = DATA / "politicas_da_loja.pdf"
 POLICY_TERMS = (
     "troca",
     "devol",
@@ -38,20 +47,6 @@ POLICY_TERMS = (
     "frete",
     "entrega",
     "garantia",
-)
-PRODUCT_TERMS = (
-    "preco",
-    "custa",
-    "valor",
-    "estoque",
-    "disponivel",
-    "produto",
-    "violao",
-    "guitarra",
-    "piano",
-    "instrumento",
-    "ate",
-    "violao",
 )
 IGNORED_PRODUCT_WORDS = {
     "preco",
@@ -80,6 +75,15 @@ IGNORED_PRODUCT_WORDS = {
     "tem",
     "com",
     "para",
+    "baixo",
+    "barato",
+    "caro",
+    "mais",
+    "mil",
+    "reais",
+    "entre",
+    "abaixo",
+    "maximo",
 }
 
 
@@ -95,9 +99,20 @@ def normalize(text: str) -> str:
     return "".join(char for char in text if not unicodedata.combining(char))
 
 
+def _correct_category_typos(query: str) -> str:
+    categories = ("violao", "guitarra", "ukulele", "teclado", "bateria")
+    for word in re.findall(r"[a-z]+", query):
+        suggestion = difflib.get_close_matches(word, categories, n=1, cutoff=0.82)
+        if suggestion:
+            query = re.sub(rf"\b{word}\b", suggestion[0], query)
+    return query
+
+
 def load_evidence(question: str) -> Evidence | None:
     query = normalize(question)
-    query = query.replace("violoes", "violao")
+    query = _correct_category_typos(query.replace("violoes", "violao"))
+    if re.search(r"\b(celular|notebook|computador|pc)\b", query):
+        return None
     if any(term in query for term in POLICY_TERMS) or any(
         term in query for term in ("onde fica", "abre", "fecha", "funciona")
     ):
@@ -122,13 +137,7 @@ def load_evidence(question: str) -> Evidence | None:
     listed = category_evidence(query, rows, source_name(PRODUCTS))
     if listed is not None and not (matches and max(match[0] for match in matches) > 1):
         return listed
-    if matches or any(term in query for term in PRODUCT_TERMS):
-        if not matches:
-            return Evidence(
-                "product",
-                source_name(PRODUCTS),
-                "No matching product was found in the catalog.",
-            )
+    if matches:
         best_score = max(match[0] for match in matches)
         best = [match for match in matches if match[0] == best_score]
         if len(best) != 1:
@@ -136,7 +145,7 @@ def load_evidence(question: str) -> Evidence | None:
             return Evidence(
                 "product",
                 source_name(PRODUCTS),
-                f"Several products may match. Ask the customer to clarify: {names}",
+                f"Encontrei mais de um produto possível. Qual deles você procura? {names}",
             )
         _, row_number, row = best[0]
         text = (
@@ -193,7 +202,8 @@ def model_answer(
     try:
         with urlopen(request, timeout=45) as response:
             result = json.loads(response.read())
-        return result["choices"][0]["message"]["content"].strip()
+        content = result["choices"][0]["message"]["content"].strip()
+        return content or local_answer(question, evidence)
     except (
         HTTPError,
         URLError,
@@ -219,8 +229,7 @@ def print_response(
         answer = answer_order_status()
         print(f"{prefix}{answer}")
         return answer, None
-    model_enabled = bool(os.getenv("OPENAI_BASE_URL"))
-    evidence = carry_over(load_evidence(question), previous, model_enabled)
+    evidence = carry_over(load_evidence(question), previous, question)
     answer = model_answer(question, evidence, history)
     print(f"{prefix}{answer}")
     if evidence:

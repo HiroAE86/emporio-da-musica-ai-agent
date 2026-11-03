@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from unittest.mock import patch
 
-from agent_cli import Evidence, load_evidence, local_answer  # noqa: E402
+from agent_cli import Evidence, load_evidence, local_answer, model_answer  # noqa: E402
 from offline_answers import carry_over  # noqa: E402
 from order_status import GENERIC_MISMATCH, lookup_order_status  # noqa: E402
 
@@ -60,12 +63,102 @@ class AgentBehaviorTests(unittest.TestCase):
 
     def test_follow_up_reuses_previous_catalog_evidence(self) -> None:
         listed = Evidence("category", "products.csv", "Yamaha C40 — R$ 599,90 — disponível")
-        unresolved = Evidence("product", "products.csv", "No matching product was found.")
+        unresolved = Evidence("product", "products.csv", "Não encontrei esse produto.")
         policy = Evidence("policy", "policy.pdf", "texto")
-        self.assertIs(carry_over(unresolved, listed, model_enabled=False), listed)
-        self.assertIs(carry_over(None, listed, model_enabled=True), listed)
-        self.assertIsNone(carry_over(None, listed, model_enabled=False))
-        self.assertIs(carry_over(policy, listed, model_enabled=True), policy)
+        self.assertIs(carry_over(unresolved, listed), listed)
+        self.assertIs(carry_over(None, listed, "quanto custa isso?"), listed)
+        self.assertIsNone(carry_over(None, listed))
+        self.assertIs(carry_over(policy, listed), policy)
+
+    def test_follow_up_is_explicit_and_keeps_out_of_scope_clear(self) -> None:
+        listed = Evidence("category", "products.csv", "Yamaha C40 — R$ 599,90")
+        self.assertIs(carry_over(None, listed, "quanto custa isso?"), listed)
+        self.assertIs(carry_over(None, listed, "e o mais barato?"), listed)
+        self.assertIsNone(carry_over(None, listed, "qual é a capital da França?"))
+
+    def test_price_language_and_low_price_do_not_route_to_bass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,599.9,Yamaha C40,5,Violão clássico,3,active\n"
+                "b,1200,Tagima Memphis,5,Violão acústico,2,active\n",
+                encoding="utf-8",
+            )
+            with patch("agent_cli.PRODUCTS", csv_path):
+                thousand = local_answer("", load_evidence("violao até mil reais"))
+                range_answer = local_answer("", load_evidence("violao entre 500 e 1000"))
+                low_price = load_evidence("quero um preço baixo")
+            self.assertIn("Yamaha C40", thousand)
+            self.assertNotIn("Tagima", thousand)
+            self.assertIn("Yamaha C40", range_answer)
+            self.assertNotIn("Tagima", range_answer)
+            self.assertIsNone(low_price)
+
+    def test_category_typos_and_computer_battery_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,599.9,Yamaha C40,5,Violão clássico,3,active\n"
+                "b,5400,Fender Stratocaster,6,Guitarra elétrica,2,active\n",
+                encoding="utf-8",
+            )
+            with patch("agent_cli.PRODUCTS", csv_path):
+                guitar = local_answer("", load_evidence("guitara"))
+                guitar_tilde = local_answer("", load_evidence("violõa"))
+                battery = load_evidence("bateria do celular")
+            self.assertIn("Fender Stratocaster", guitar)
+            self.assertIn("Yamaha C40", guitar_tilde)
+            self.assertIsNone(battery)
+
+    def test_unmatched_product_and_empty_model_reply_are_portuguese_and_grounded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n",
+                encoding="utf-8",
+            )
+            with patch("agent_cli.PRODUCTS", csv_path):
+                answer = local_answer("violao inexistente", load_evidence("violao inexistente"))
+            self.assertIn("Nenhum produto", answer)
+
+    def test_model_receives_evidence_and_empty_reply_falls_back(self) -> None:
+        captured: list[dict[str, object]] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                captured.append(json.loads(body))
+                response = json.dumps(
+                    {"choices": [{"message": {"content": "  "}}]}
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, *_args: object) -> None:
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            evidence = Evidence(
+                "product",
+                "products.csv",
+                "Name: Takamine GD20\nPrice (BRL): 2199\n"
+                "Stock in supplied CSV snapshot: 3\nStatus: active",
+            )
+            with patch.dict(os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}):
+                answer = model_answer("Quanto custa o Takamine GD20?", evidence)
+            self.assertIn("Takamine GD20", str(captured[0]["messages"][-1]["content"]))
+            self.assertIn("R$ 2.199,00", answer)
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
 
     def test_policy_answers_use_extracted_text_and_unknown_fails_closed(self) -> None:
         class Page:
@@ -163,6 +256,11 @@ class AgentBehaviorTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("Posso ajudar com instrumentos musicais", result.stdout)
+
+    def test_polite_short_messages_stay_in_portuguese(self) -> None:
+        self.assertIn("Por nada", local_answer("obrigada", None))
+        self.assertIn("Até mais", local_answer("tchau", None))
+        self.assertIn("Posso ajudar", local_answer("🎸", None))
 
 
 if __name__ == "__main__":

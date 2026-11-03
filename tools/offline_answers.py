@@ -19,23 +19,37 @@ def normalize(text: str) -> str:
 
 
 def carry_over(
-    evidence: Evidence | None, previous: Evidence | None, model_enabled: bool
+    evidence: Evidence | None,
+    previous: Evidence | None,
+    question: str = "",
 ) -> Evidence | None:
     """Reuse the previous turn's evidence for follow-ups like "quanto custa isso?"."""
     if previous is None or previous.kind not in {"product", "category"}:
         return evidence
     unresolved = evidence is not None and evidence.kind == "product"
-    unresolved = unresolved and evidence.text.startswith(("No matching", "Several products"))
-    if unresolved or (evidence is None and model_enabled):
+    unresolved = unresolved and evidence.text.startswith(
+        ("Não encontrei", "Encontrei mais de um produto")
+    )
+    query = normalize(question)
+    follow_up = evidence is None and any(
+        phrase in query
+        for phrase in ("isso", "esse", "essa", "quanto custa", "e o mais", "e a mais")
+    )
+    if unresolved or follow_up:
         return previous
     return evidence
 
 
 def local_answer(question: str, evidence: Evidence | None) -> str:
     if evidence is None:
+        query = normalize(question).strip().strip("!?. ,")
+        if query in {"obrigado", "obrigada", "valeu", "obrigado vc", "obrigada vc"}:
+            return "Por nada! Se precisar, posso ajudar com instrumentos, preços, disponibilidade e políticas da loja."
+        if query in {"tchau", "ate mais", "ate logo", "falou"}:
+            return "Até mais! Quando precisar, estou por aqui para ajudar com a loja."
         return "Oi! Posso ajudar com instrumentos musicais, preços e disponibilidade do catálogo, além das políticas da loja."
     if evidence.kind == "product":
-        if evidence.text.startswith(("No matching", "Several products")):
+        if evidence.text.startswith(("Não encontrei", "Encontrei mais de um produto")):
             return evidence.text
         values = dict(line.split(": ", 1) for line in evidence.text.splitlines() if ": " in line)
         price = float(values["Price (BRL)"])
