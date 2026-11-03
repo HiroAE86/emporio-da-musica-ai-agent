@@ -11,16 +11,15 @@ import subprocess
 import sys
 import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from order_status import answer_order_status, is_order_request
+from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
+DATA = resolve_data_dir()
 PRODUCTS = next(DATA.glob("*products.csv"))
-POLICY_PDF = next(DATA.glob("*pol*.pdf"))
+POLICY_PDF = resolve_policy_pdf()
 POLICY_TERMS = (
     "troca",
     "devol",

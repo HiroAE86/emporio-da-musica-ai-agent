@@ -7,8 +7,9 @@ import getpass
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "Desafio Técnico AI Engineer 2026" / "data"
+from project_paths import ROOT, resolve_data_dir
+
+DATA = resolve_data_dir()
 SAMPLE_DATA = ROOT / "examples" / "fixtures"
 
 
