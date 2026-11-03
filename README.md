@@ -46,7 +46,7 @@ Set `OPENAI_BASE_URL` (for example `http://localhost:1234/v1`), `OPENAI_MODEL`, 
 - **Model and prompt:** any configured OpenAI-compatible chat model can be used. The prompt requests a cordial Brazilian Portuguese tone, source-grounded answers, complete return conditions, and no personal-data disclosure. These instructions are not enforced by an output validator. Local templates provide predictable product, category/budget, policy, regret-return, and out-of-scope replies when no endpoint is configured or reachable.
 - **Interface and history:** one-shot and interactive CLI; no persistent conversation history because the case does not require it.
 - **Data:** product facts come from the products CSV; policy text comes from the store PDF. Order/customer rows stay local. The order lookup requires the order number, email, and phone, then returns only status and estimated delivery. It uses one generic reply for mismatches and unknown orders. The included order fixtures are fictional. Product and policy questions are sent as typed to a configured model endpoint with retrieved evidence; do not include personal details in those messages.
-- **Scope decisions:** this prototype does not implement category/budget filtering, promotions, address lookup, or general policy clause matching in its local fallback. It does not demonstrate live inventory or real-time order integration.
+- **Scope decisions:** the local fallback covers product price and availability, category/budget lists, and the address, hours, payment, exchange, and regret-return sections of the policy PDF. It does not implement promotions or general policy clause matching, and it does not demonstrate live inventory or real-time order integration.
 
 ## Tests and examples
 
@@ -56,7 +56,7 @@ Run the offline behavior suite:
 python -m unittest discover -s tests -v
 ```
 
-Tests use synthetic catalog, customer, and order data and do not call a model endpoint. Four verified transcripts are in [examples/conversations.md](examples/conversations.md).
+Tests use synthetic catalog, customer, and order data and do not call a model endpoint. Five verified transcripts are in [examples/conversations.md](examples/conversations.md).
 
 ## Limitations
 
