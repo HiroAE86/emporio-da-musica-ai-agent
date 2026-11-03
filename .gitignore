@@ -9,3 +9,5 @@ __pycache__/
 /tools/project_knowledge.py
 /docs/knowledge-index.json
 *.egg-info/
+/qa/results/*
+!/qa/results/.gitkeep

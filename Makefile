@@ -8,7 +8,7 @@ CLI := $(PY) tools/agent_cli.py
 -include .env
 export OPENAI_BASE_URL OPENAI_MODEL OPENAI_API_KEY AGENT_TOOLS
 
-.PHONY: help setup preflight test lint demo chat ask order policies clean
+.PHONY: help setup preflight test lint demo chat ask order policies qa clean
 
 help: ## List available commands
 	@grep -E "^[a-z]+:.*## " $(MAKEFILE_LIST) | awk -F ":.*## " "{printf \"  make %-10s %s\n\", \$$1, \$$2}"
@@ -46,6 +46,9 @@ demo: $(PY) ## Run the example questions from the case
 
 order: $(PY) ## Order status demo with fixture data (TESTE-100, cliente@example.test, 67999990000)
 	@ORDER_DATA_DIR=examples/fixtures $(CLI) "Qual é o status do meu pedido?"
+
+qa: $(PY) ## Run conversational QA scenarios
+	@$(PY) tools/qa_runner.py
 
 ask: $(PY) ## Ask one question: make ask Q="Quanto custa o Yamaha C40?"
 	@$(CLI) "$(Q)"

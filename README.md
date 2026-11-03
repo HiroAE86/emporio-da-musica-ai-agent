@@ -60,6 +60,18 @@ python -m unittest discover -s tests -v
 PATH=/tmp/emporio-venv/bin:$PATH sh scripts/check_python.sh
 ```
 
+## QA
+
+Run the conversational QA scenarios against the configured local model, or offline when `OPENAI_BASE_URL` is unset:
+
+```sh
+make qa
+QA_SCENARIO=order make qa
+QA_OUT=/tmp/emporio-qa make qa
+```
+
+Each run starts fresh conversations, preserves history between turns, and writes a Markdown transcript plus JSONL records under `qa/results/`. The command exits nonzero when a check fails. Reports are local and ignored by Git.
+
 The offline tests use synthetic data and a local fake OpenAI-compatible server. They cover tool dispatch, multiple rounds, bad and unknown calls, unsupported-tool fallback, PII redaction, legacy behavior, and policy facts checked against the PDF. Five offline conversations are in [examples/conversations.md](examples/conversations.md).
 
 ## Limitations
