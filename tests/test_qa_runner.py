@@ -14,10 +14,27 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from qa_runner import run  # noqa: E402
+from qa_runner import checks, run  # noqa: E402
 
 
 class QaRunnerTests(unittest.TestCase):
+    def test_prices_grounded_checks_pairs_in_filtered_evidence(self) -> None:
+        evidence = (
+            "Categoria: violões\nLimite de preço desta consulta: R$ 500,00.\n"
+            "Tagima Memphis AC-39 Nylon Natural — R$ 429,90 — disponível\n"
+            "Rozini RC-104 Nylon Estudante — R$ 459,90 — disponível"
+        )
+        for answer, valid in (
+            ("Violões: Takamine GD20 — R$ 599,90", False),
+            ("Violões: Tagima Memphis — R$ 459,90", False),
+            ("Violões: Tagima Memphis — R$ 429,90", True),
+            ("Violões: Rozini RC-104 — R$ 459,90", True),
+            ("Violões: Desconhecido — R$ 429,90", False),
+        ):
+            with self.subTest(answer=answer):
+                result = checks(answer, {"prices_grounded": True}, set(), evidence)
+                self.assertEqual(valid, result[0]["passed"])
+
     def test_two_offline_scenarios(self) -> None:
         scenarios = [
             {
