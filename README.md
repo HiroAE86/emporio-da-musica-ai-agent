@@ -18,6 +18,8 @@ The project installs `pypdf` to extract the supplied store policy PDF. The origi
 
 ```sh
 python tools/agent_cli.py "Quanto custa o Takamine GD20?"
+python tools/agent_cli.py "Quais violões vocês têm até R$ 1.000?"
+python tools/agent_cli.py "Qual é o endereço da loja?"
 python tools/agent_cli.py "Comprei online há cinco dias e me arrependi. Posso devolver?"
 python tools/agent_cli.py "Qual é a capital da França?"
 ORDER_DATA_DIR=examples/fixtures python tools/agent_cli.py "Qual é o status do meu pedido?"
@@ -36,12 +38,12 @@ set -a
 set +a
 ```
 
-Set `OPENAI_BASE_URL` (for example `http://localhost:1234/v1`), `OPENAI_MODEL`, and `OPENAI_API_KEY` only if the endpoint requires a key. The CLI does not load `.env` itself. `--preflight` checks the catalog and policy files; if configured, it also checks the endpoint's `/models` route. An unavailable model falls back to local answers. Other policy questions get a message to contact the store when no model is reachable.
+Set `OPENAI_BASE_URL` (for example `http://localhost:1234/v1`), `OPENAI_MODEL`, and `OPENAI_API_KEY` only if the endpoint requires a key. The CLI does not load `.env` itself. `--preflight` checks the catalog and policy files; if configured, it also checks the endpoint's `/models` route. An unavailable model falls back to local answers. Address, hours, payment methods, exchanges, and regret-return questions are answered locally from the policy PDF. Unknown policy facts get a message to contact the store.
 
 ## Technical decisions
 
 - **Approach:** deterministic keyword routing and direct CSV/PDF retrieval, with an optional single model call. No framework, embeddings, or vector database are needed for these fixed sources. Product matching is lexical; policy retrieval extracts the manual and sends its first 18,000 characters.
-- **Model and prompt:** any configured OpenAI-compatible chat model can be used. The prompt requests a cordial Brazilian Portuguese tone, source-grounded answers, complete return conditions, and no personal-data disclosure. These instructions are not enforced by an output validator. Local templates provide predictable price/stock, regret-return, and out-of-scope replies when no endpoint is configured or reachable.
+- **Model and prompt:** any configured OpenAI-compatible chat model can be used. The prompt requests a cordial Brazilian Portuguese tone, source-grounded answers, complete return conditions, and no personal-data disclosure. These instructions are not enforced by an output validator. Local templates provide predictable product, category/budget, policy, regret-return, and out-of-scope replies when no endpoint is configured or reachable.
 - **Interface and history:** one-shot and interactive CLI; no persistent conversation history because the case does not require it.
 - **Data:** product facts come from the products CSV; policy text comes from the store PDF. Order/customer rows stay local. The order lookup requires the order number, email, and phone, then returns only status and estimated delivery. It uses one generic reply for mismatches and unknown orders. The included order fixtures are fictional. Product and policy questions are sent as typed to a configured model endpoint with retrieved evidence; do not include personal details in those messages.
 - **Scope decisions:** this prototype does not implement category/budget filtering, promotions, address lookup, or general policy clause matching in its local fallback. It does not demonstrate live inventory or real-time order integration.
@@ -58,9 +60,9 @@ Tests use synthetic catalog, customer, and order data and do not call a model en
 
 ## Limitations
 
-Product matching depends on words in the product name. Policy routing depends on keywords and passes a fixed leading excerpt to the model. Local policy fallback only handles regret returns; it cannot answer other policy questions without a reachable model. Model output can omit or misstate evidence because it is not validated. Stock and order status are static CSV snapshots. Email and phone checks are a basic demo safeguard, not production identity verification. The CLI does not redact personal details included in product or policy questions sent to a configured endpoint.
+Product matching depends on words in product names; category filtering matches category words in names and descriptions because the CSV has no category labels. Policy routing depends on keywords, and local replies use facts present in the supplied PDF. Model output can omit or misstate evidence because it is not validated. Stock and order status are static CSV snapshots. Email and phone checks are a basic demo safeguard, not production identity verification. The CLI does not redact personal details included in product or policy questions sent to a configured endpoint.
 
-With more time, I would add section-aware policy retrieval, deterministic category and budget filters, response validation, and a stronger identity flow.
+With more time, I would add response validation, a stronger identity flow, and explicit category labels in the catalog.
 
 ## AI tools
 

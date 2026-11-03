@@ -9,11 +9,11 @@ import os
 import re
 import sys
 import unicodedata
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from offline_answers import Evidence, local_answer
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
 from pypdf import PdfReader
@@ -49,6 +49,8 @@ PRODUCT_TERMS = (
     "guitarra",
     "piano",
     "instrumento",
+    "ate",
+    "violao",
 )
 IGNORED_PRODUCT_WORDS = {
     "preco",
@@ -80,13 +82,6 @@ IGNORED_PRODUCT_WORDS = {
 }
 
 
-@dataclass(frozen=True)
-class Evidence:
-    kind: str
-    source: str
-    text: str
-
-
 def source_name(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -101,8 +96,13 @@ def normalize(text: str) -> str:
 
 def load_evidence(question: str) -> Evidence | None:
     query = normalize(question)
-    if any(term in query for term in POLICY_TERMS):
-        extracted = "\n".join(page.extract_text() or "" for page in PdfReader(POLICY_PDF).pages)
+    query = query.replace("violoes", "violao")
+    if any(term in query for term in POLICY_TERMS) or any(
+        term in query for term in ("onde fica", "abre", "fecha", "funciona")
+    ):
+        extracted = " ".join(
+            " ".join((page.extract_text() or "").split()) for page in PdfReader(POLICY_PDF).pages
+        )
         return Evidence("policy", str(POLICY_PDF.relative_to(ROOT)), extracted[:18000])
 
     with PRODUCTS.open(encoding="utf-8-sig", newline="") as file:
@@ -118,6 +118,29 @@ def load_evidence(question: str) -> Evidence | None:
         score = len(query_words & name_words)
         if score:
             matches.append((score, row_number, row))
+    budget_match = re.search(r"\b(?:ate|abaixo de|no maximo)\s+r?\$?\s*([\d.,]+)", query)
+    category_terms = ("violao", "guitarra", "baixo", "bateria", "teclado", "piano", "ukulele")
+    category_query = (
+        any(re.search(rf"\b{term}s?\b", query) for term in category_terms) and budget_match
+    )
+    if category_query:
+        maximum = float(budget_match.group(1).replace(".", "").replace(",", "."))
+        category = next(term for term in category_terms if re.search(rf"\b{term}s?\b", query))
+        selected = []
+        for row_number, row in enumerate(rows, start=2):
+            searchable = normalize(row["name"] + " " + row["description"])
+            price = float(row["price_brl"].replace(",", "."))
+            if category in searchable and price <= maximum:
+                available = row["status"] == "active" and int(row["stock_quantity"]) > 0
+                selected.append(
+                    f"{row['name']} — R$ {price:,.2f} — {'disponível' if available else 'indisponível'} (linha {row_number})"
+                )
+        text = (
+            "\n".join(selected)
+            if selected
+            else f"Nenhum produto da categoria {category} até R$ {maximum:.2f}."
+        )
+        return Evidence("category", source_name(PRODUCTS), text)
     if matches or any(term in query for term in PRODUCT_TERMS):
         if not matches:
             return Evidence(
@@ -142,30 +165,6 @@ def load_evidence(question: str) -> Evidence | None:
         )
         return Evidence("product", source_name(PRODUCTS), text)
     return None
-
-
-def local_answer(question: str, evidence: Evidence | None) -> str:
-    if evidence is None:
-        return "Oi! Posso ajudar com instrumentos musicais, preços e disponibilidade do catálogo, além das políticas da loja."
-    if evidence.kind == "product":
-        if evidence.text.startswith("No matching") or evidence.text.startswith("Several products"):
-            return evidence.text
-        values = dict(line.split(": ", 1) for line in evidence.text.splitlines() if ": " in line)
-        price = float(values["Price (BRL)"])
-        price_brl = f"R$ {price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        status = (
-            "disponível"
-            if values["Status"] == "active" and int(values["Stock in supplied CSV snapshot"]) > 0
-            else "indisponível"
-        )
-        return f"Oi! {values['Name']} está cadastrado por {price_brl} e aparece como {status} no arquivo, com {values['Stock in supplied CSV snapshot']} unidade(s). A informação vem do catálogo fornecido, não de estoque ao vivo."
-    if any(term in normalize(question) for term in ("arrepend", "devol", "retorn")):
-        return (
-            "Oi! Para compras online, você pode pedir a devolução em até 7 dias corridos após receber o produto, sem justificar. "
-            "Ele precisa estar sem uso, na embalagem original e com acessórios e manuais. A loja paga o frete de devolução, "
-            "e o reembolso ocorre pela forma de pagamento original em até 10 dias úteis."
-        )
-    return "Encontrei informações da política da loja. Não consegui resumir esta política agora; consulte a fonte ou fale com a equipe da loja."
 
 
 def model_answer(question: str, evidence: Evidence | None) -> str:
