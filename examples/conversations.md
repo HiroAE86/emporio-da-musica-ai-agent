@@ -7,21 +7,21 @@ These five conversations were run offline against the supplied CSV and policy PD
 **Customer:** Quais violões vocês têm até R$ 1.000?
 
 **Empório da Música:** Oi! Encontrei estas opções no catálogo:
-Yamaha C40 Nylon Natural — R$ 599,90 — disponível (linha 2)
-Yamaha C70 Nylon Natural — R$ 849,00 — disponível (linha 3)
-Tagima Memphis AC-39 Nylon Natural — R$ 429,90 — disponível (linha 4)
-Giannini GN-15 Nylon Cedr Natural — R$ 689,00 — disponível (linha 5)
-Rozini RC-104 Nylon Estudante — R$ 459,90 — disponível (linha 6)
-Tagima Dallas Tuner Aço Natural — R$ 749,00 — disponível (linha 7)
-Yamaha F310 Aço Natural — R$ 699,90 — disponível (linha 8)
-Giannini GF-1R Aço Folk Sunburst — R$ 579,90 — disponível (linha 9)
-Shelby SN-100 Folk Aço Preto — R$ 549,00 — disponível (linha 10)
-Tagima Woodstock Dreadnought Natural — R$ 899,00 — disponível (linha 12)
-Giannini GF-3D Dreadnought Sunburst — R$ 799,90 — indisponível (linha 17)
-Shelby SGD-195E Elétrico Aço Sunburst — R$ 799,00 — disponível (linha 28)
-Tagima TW-7 7 Cordas Aço Natural — R$ 999,00 — disponível (linha 33)
-Shelby SN-7C 7 Cordas Nylon Natural — R$ 749,00 — indisponível (linha 34)
-Kala KA-B Barítono Mogno — R$ 599,00 — disponível (linha 49)
+Yamaha C40 Nylon Natural — R$ 599,90 — disponível
+Yamaha C70 Nylon Natural — R$ 849,00 — disponível
+Tagima Memphis AC-39 Nylon Natural — R$ 429,90 — disponível
+Giannini GN-15 Nylon Cedr Natural — R$ 689,00 — disponível
+Rozini RC-104 Nylon Estudante — R$ 459,90 — disponível
+Tagima Dallas Tuner Aço Natural — R$ 749,00 — disponível
+Yamaha F310 Aço Natural — R$ 699,90 — disponível
+Giannini GF-1R Aço Folk Sunburst — R$ 579,90 — disponível
+Shelby SN-100 Folk Aço Preto — R$ 549,00 — disponível
+Tagima Woodstock Dreadnought Natural — R$ 899,00 — disponível
+Giannini GF-3D Dreadnought Sunburst — R$ 799,90 — indisponível
+Shelby SGD-195E Elétrico Aço Sunburst — R$ 799,00 — disponível
+Tagima TW-7 7 Cordas Aço Natural — R$ 999,00 — disponível
+Shelby SN-7C 7 Cordas Nylon Natural — R$ 749,00 — indisponível
+Kala KA-B Barítono Mogno — R$ 599,00 — disponível
 Fonte: Desafio Técnico AI Engineer 2026/data/desafio_tecnico_ai_eng - products.csv
 
 ## Product price and availability

@@ -18,6 +18,19 @@ def normalize(text: str) -> str:
     return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
+def carry_over(
+    evidence: Evidence | None, previous: Evidence | None, model_enabled: bool
+) -> Evidence | None:
+    """Reuse the previous turn's evidence for follow-ups like "quanto custa isso?"."""
+    if previous is None or previous.kind not in {"product", "category"}:
+        return evidence
+    unresolved = evidence is not None and evidence.kind == "product"
+    unresolved = unresolved and evidence.text.startswith(("No matching", "Several products"))
+    if unresolved or (evidence is None and model_enabled):
+        return previous
+    return evidence
+
+
 def local_answer(question: str, evidence: Evidence | None) -> str:
     if evidence is None:
         return "Oi! Posso ajudar com instrumentos musicais, preços e disponibilidade do catálogo, além das políticas da loja."

@@ -18,6 +18,7 @@ def mode_description() -> str:
 def interactive() -> None:
     print(f"Empório da Música, {mode_description()}. Digite 'sair' para encerrar.")
     history: list[dict[str, str]] = []
+    previous = None
     while True:
         try:
             question = input("Você: ").strip()
@@ -29,7 +30,7 @@ def interactive() -> None:
         if not question:
             continue
         try:
-            answer = print_response(question, "Loja: ", history)
+            answer, previous = print_response(question, "Loja: ", history, previous)
             history += [
                 {"role": "user", "content": question},
                 {"role": "assistant", "content": answer},

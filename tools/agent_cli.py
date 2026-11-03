@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from catalog import category_evidence
-from offline_answers import Evidence, local_answer
+from offline_answers import Evidence, carry_over, local_answer
 from order_status import answer_order_status, is_order_request
 from project_paths import ROOT, resolve_data_dir, resolve_policy_pdf
 from pypdf import PdfReader
@@ -159,7 +159,8 @@ def model_answer(
         return local_answer(question, evidence)
     instructions = (
         "Você atende a Empório da Música. Responda em português brasileiro, com tom informal e profissional. "
-        "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. O estoque é uma fotografia do CSV, não tempo real. "
+        "Use somente as evidências fornecidas. Não invente preço, estoque, regra ou condição. "
+        "Ao citar um produto, escreva o nome e o preço exatamente como na evidência. O estoque é uma fotografia do CSV, não tempo real. "
         "Em perguntas sobre arrependimento de compra online, inclua o prazo, as condições do produto, "
         "quem paga o frete de devolução, a forma e o prazo do reembolso, se constarem na evidência. "
         "Se a evidência não responder, diga isso e sugira falar com a equipe. Nunca exponha dados pessoais. "
@@ -209,18 +210,22 @@ def model_answer(
 
 
 def print_response(
-    question: str, prefix: str = "", history: list[dict[str, str]] | None = None
-) -> str:
+    question: str,
+    prefix: str = "",
+    history: list[dict[str, str]] | None = None,
+    previous: Evidence | None = None,
+) -> tuple[str, Evidence | None]:
     if is_order_request(question):
         answer = answer_order_status()
         print(f"{prefix}{answer}")
-        return answer
-    evidence = load_evidence(question)
+        return answer, None
+    model_enabled = bool(os.getenv("OPENAI_BASE_URL"))
+    evidence = carry_over(load_evidence(question), previous, model_enabled)
     answer = model_answer(question, evidence, history)
     print(f"{prefix}{answer}")
     if evidence:
         print(f"Fonte: {evidence.source}")
-    return answer
+    return answer, evidence
 
 
 def preflight() -> None:

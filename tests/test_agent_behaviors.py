@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from unittest.mock import patch
 
 from agent_cli import Evidence, load_evidence, local_answer  # noqa: E402
+from offline_answers import carry_over  # noqa: E402
 from order_status import GENERIC_MISMATCH, lookup_order_status  # noqa: E402
 
 
@@ -56,6 +57,15 @@ class AgentBehaviorTests(unittest.TestCase):
             self.assertIn("R$ 1.699,00", beginner)
             self.assertIn("Fender Telecaster", guitars)
             self.assertIn("guitarras: 1 produto(s)", overview)
+
+    def test_follow_up_reuses_previous_catalog_evidence(self) -> None:
+        listed = Evidence("category", "products.csv", "Yamaha C40 — R$ 599,90 — disponível")
+        unresolved = Evidence("product", "products.csv", "No matching product was found.")
+        policy = Evidence("policy", "policy.pdf", "texto")
+        self.assertIs(carry_over(unresolved, listed, model_enabled=False), listed)
+        self.assertIs(carry_over(None, listed, model_enabled=True), listed)
+        self.assertIsNone(carry_over(None, listed, model_enabled=False))
+        self.assertIs(carry_over(policy, listed, model_enabled=True), policy)
 
     def test_policy_answers_use_extracted_text_and_unknown_fails_closed(self) -> None:
         class Page:

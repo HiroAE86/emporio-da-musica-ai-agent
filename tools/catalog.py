@@ -55,7 +55,7 @@ def _price(row: dict[str, str]) -> float:
 
 def _line(row: dict[str, str], row_number: int, with_description: bool) -> str:
     status = "disponível" if _available(row) else "indisponível"
-    line = f"{row['name']} — {brl(_price(row))} — {status} (linha {row_number})"
+    line = f"{row['name']} — {brl(_price(row))} — {status}"
     if with_description:
         line += f" — {row['description'].split('.')[0].strip()}"
     return line
