@@ -11,6 +11,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from catalog import category_evidence
+from intent_router import deterministic_tool, evidence_messages
 from offline_answers import normalize
 from project_paths import ROOT
 
@@ -18,6 +19,14 @@ MAX_TOOL_ROUNDS = 4
 POLICY_FILE = ROOT / "knowledge" / "policies" / "store.md"
 CATEGORIES = {"violao", "guitarra", "baixo", "bateria", "teclado", "piano", "ukulele"}
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_catalog",
+            "description": "Summarize catalog categories and product counts.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -138,7 +147,14 @@ def _list_category(args: dict[str, Any]) -> str:
         or maximum < 0
         or maximum > 1000000
     )
-    if category not in CATEGORIES or invalid_price or not isinstance(beginner, bool):
+    if category == "__overview" and set(args) == {"category"}:
+        category = "o que voces vendem"
+    if (
+        category not in CATEGORIES
+        and category != "o que voces vendem"
+        or invalid_price
+        or not isinstance(beginner, bool)
+    ):
         raise ValueError("invalid category, max_price, or beginner")
     from agent_cli import PRODUCTS, source_name
 
@@ -176,6 +192,11 @@ def _check_order(args: dict[str, Any]) -> str:
 
 
 def _dispatch(name: str, raw_args: Any) -> str:
+    args = _arguments(raw_args)
+    if name == "list_catalog":
+        if args:
+            raise ValueError("catalog overview takes no arguments")
+        name, args = "list_category", {"category": "__overview"}
     handlers = {
         "search_products": _search_products,
         "list_category": _list_category,
@@ -185,7 +206,7 @@ def _dispatch(name: str, raw_args: Any) -> str:
     handler = handlers.get(name)
     if handler is None:
         raise LookupError(f"Unknown tool: {name}")
-    return handler(_arguments(raw_args))
+    return handler(args)
 
 
 def _tool_result(call: dict[str, Any]) -> str:
@@ -217,6 +238,9 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
     base_url = os.getenv("OPENAI_BASE_URL", "").rstrip("/")
     instructions = (
         "Você atende a Empório da Música em português brasileiro, com tom informal e profissional. "
+        "Use somente os campos presentes nos resultados das ferramentas; não invente atributos, colunas, instruções ou detalhes. "
+        "Nunca chame uma categoria pelo nome de outra. Se a pessoa corrigir sua resposta ou especificar outra categoria, consulte novamente. "
+        "A evidência da consulta atual prevalece sobre o histórico. Não reutilize categoria ou limite de preço anterior quando a pessoa indicar outra categoria; aplique limites só se forem pedidos na mensagem atual. "
         "Use as ferramentas para consultar fatos; não invente. A lista de fontes e seções disponíveis:\n"
         + (ROOT / "knowledge" / "INDEX.md").read_text(encoding="utf-8")
         + "\nDados de cliente nunca devem ser solicitados por ferramenta nem repetidos."
@@ -229,6 +253,10 @@ def run_tool_agent(question: str, history: list[dict[str, str]] | None = None) -
         ],
         {"role": "user", "content": _model_safe(question)},
     ]
+    deterministic = deterministic_tool(question)
+    if deterministic:
+        name, args = deterministic
+        messages.extend(evidence_messages(name, args, _dispatch(name, args)))
     for round_number in range(MAX_TOOL_ROUNDS + 1):
         payload = json.dumps(
             {

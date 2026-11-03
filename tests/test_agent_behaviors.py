@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from unittest.mock import patch
 
-from agent_cli import Evidence, load_evidence, local_answer, model_answer  # noqa: E402
+from agent_cli import Evidence, load_evidence, local_answer, model_answer, print_response  # noqa: E402
 from offline_answers import carry_over  # noqa: E402
 from order_status import GENERIC_MISMATCH, lookup_order_status  # noqa: E402
 from tool_calling import run_tool_agent  # noqa: E402
@@ -48,6 +48,67 @@ class AgentBehaviorTests(unittest.TestCase):
         self.addCleanup(thread.join)
         self.addCleanup(server.shutdown)
         return server, captured
+
+    def test_tool_agent_preloads_catalog_overview_for_small_models(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,599.9,Yamaha C40,5,Violão clássico,3,active\n"
+                "b,5400,Fender Stratocaster,6,Guitarra elétrica,2,active\n",
+                encoding="utf-8",
+            )
+            server, captured = self._tool_server(
+                [{"choices": [{"message": {"content": "Vendemos violões: 1; guitarras: 1."}}]}]
+            )
+            with (
+                patch("agent_cli.PRODUCTS", csv_path),
+                patch.dict(
+                    os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                ),
+            ):
+                answer = run_tool_agent("Oi, o que vocês vendem?")
+            messages = captured[0]["messages"]
+            self.assertIn("violões: 1 produto(s)", messages[-1]["content"])
+            self.assertIn("guitarras: 1 produto(s)", messages[-1]["content"])
+            self.assertIn("Vendemos violões", str(answer))
+
+    def test_tool_agent_retrieves_explicit_guitar_category_after_violin_followup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory) / "products.csv"
+            csv_path.write_text(
+                "product_id,price_brl,name,category_id,description,stock_quantity,status\n"
+                "a,599.9,Yamaha C40,5,Violão clássico,3,active\n"
+                "b,5400,Fender Stratocaster,6,Guitarra elétrica,2,active\n",
+                encoding="utf-8",
+            )
+            responses = [
+                {"choices": [{"message": {"content": "Estas são opções de violão."}}]},
+                {"choices": [{"message": {"content": "Estas são opções de guitarra."}}]},
+                {"choices": [{"message": {"content": "Você tem razão: estas são guitarras."}}]},
+            ]
+            server, captured = self._tool_server(responses)
+            with (
+                patch("agent_cli.PRODUCTS", csv_path),
+                patch.dict(
+                    os.environ, {"OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
+                ),
+            ):
+                _, previous = print_response("Quais violões vocês têm?")
+                _, previous = print_response("e guitarra?", history=[], previous=previous)
+                _, corrected = print_response(
+                    "Eu disse guitarra, não violão", history=[], previous=previous
+                )
+            for request in captured[1:]:
+                tool_content = request["messages"][-1]["content"]
+                self.assertIn("Fender Stratocaster", tool_content)
+                self.assertNotIn("Yamaha C40", tool_content)
+                self.assertNotIn("1.500", tool_content)
+            system_prompt = captured[1]["messages"][0]["content"]
+            self.assertIn("somente os campos presentes", system_prompt)
+            self.assertIn("Nunca chame uma categoria pelo nome de outra", system_prompt)
+            self.assertIn("limite de preço anterior", system_prompt)
+            self.assertIn("Fender Stratocaster", corrected.text)
 
     def test_tool_agent_dispatches_across_multiple_rounds(self) -> None:
         first = {

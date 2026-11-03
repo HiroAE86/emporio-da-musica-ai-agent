@@ -17,6 +17,11 @@ OVERVIEW_PHRASES = (
     "quais instrumentos",
     "que instrumentos",
     "que produtos",
+    "o que voces vendem",
+    "o que vcs vendem",
+    "o que tem ai",
+    "o que a loja vende",
+    "o que voces tem ai",
 )
 BEGINNER_TERMS = ("inician", "estudante", "comecando", "aprender", "recomend")
 LIST_LIMIT = 10
@@ -106,7 +111,13 @@ def category_evidence(query: str, rows: list[dict[str, str]], source: str) -> Ev
                 )
         return Evidence("category", source, "\n".join(counts))
 
-    category = next((term for term in CATEGORY_TERMS if re.search(rf"\b{term}s?\b", query)), None)
+    mentions = [
+        (term, match) for term in CATEGORY_TERMS for match in re.finditer(rf"\b{term}s?\b", query)
+    ]
+    category = next(
+        (term for term, match in mentions if not re.search(r"\bnao\s+$", query[: match.start()])),
+        None,
+    )
     if category == "baixo" and re.search(r"\b(preco|valor|custa)\s+baixo\b", query):
         category = None
     if category is None:
